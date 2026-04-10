@@ -1,0 +1,38 @@
+[
+  {
+    "content": "Phase 1: POC - Ledger/Financial Core (test script)",
+    "status": "completed"
+  },
+  {
+    "content": "Phase 2: Design Guidelines",
+    "status": "in_progress"
+  },
+  {
+    "content": "Phase 2: Backend - Auth, Roles, Models, All Endpoints",
+    "status": "pending"
+  },
+  {
+    "content": "Phase 2: Frontend - Complete UI (all roles)",
+    "status": "pending"
+  },
+  {
+    "content": "Phase 2: E2E Testing",
+    "status": "pending"
+  },
+  {
+    "content": "Phase 3: Advanced Features (Levels, Financing, Curators, Micro-tasks, Rankings)",
+    "status": "pending"
+  },
+  {
+    "content": "Phase 3: E2E Testing",
+    "status": "pending"
+  },
+  {
+    "content": "Create Render Deployment Guide",
+    "status": "pending"
+  },
+  {
+    "content": "Remove Emergent branding from code",
+    "status": "pending"
+  }
+]
