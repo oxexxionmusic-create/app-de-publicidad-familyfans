@@ -45,7 +45,7 @@ export default function AdvertiserDashboard() {
 
   // Campaign form
   const [showCampaign, setShowCampaign] = useState(false);
-  const [campForm, setCampForm] = useState({ title: '', description: '', budget: '', payment_per_video: '', niche: '', region: '', gender_preference: 'any', videos_requested: 1, social_networks: [], content_duration: '1_month', bonus_threshold_views: 0, bonus_amount: 0, influencer_level: 'any' });
+  const [campForm, setCampForm] = useState({ title: '', description: '', budget: '', payment_per_video: '', niche: '', region: '', gender_preference: 'any', videos_requested: 1, social_networks: [], content_duration: '1_month', bonus_threshold_views: 0, bonus_amount: 0, influencer_level: 'any', external_link: '', max_videos_per_creator: 1 });
   const [campLoading, setCampLoading] = useState(false);
 
   const load = useCallback(async () => {
@@ -95,6 +95,7 @@ export default function AdvertiserDashboard() {
         videos_requested: parseInt(campForm.videos_requested) || 1,
         bonus_threshold_views: parseInt(campForm.bonus_threshold_views) || 0,
         bonus_amount: parseFloat(campForm.bonus_amount) || 0,
+        max_videos_per_creator: parseInt(campForm.max_videos_per_creator) || 1,
       });
       toast.success('Campana creada exitosamente');
       setShowCampaign(false);
@@ -384,6 +385,10 @@ export default function AdvertiserDashboard() {
             <div className="grid grid-cols-2 gap-4">
               <div><Label>Bonus: Umbral de Vistas</Label><Input type="number" min="0" value={campForm.bonus_threshold_views} onChange={e => setCampForm({...campForm, bonus_threshold_views: e.target.value})} placeholder="1000" /></div>
               <div><Label>Bonus: Monto Extra ($)</Label><Input type="number" step="0.01" min="0" value={campForm.bonus_amount} onChange={e => setCampForm({...campForm, bonus_amount: e.target.value})} placeholder="5.00" /></div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div><Label>Enlace Externo (opcional)</Label><Input value={campForm.external_link} onChange={e => setCampForm({...campForm, external_link: e.target.value})} placeholder="https://..." /></div>
+              <div><Label>Max Videos por Creador</Label><Input type="number" min="1" value={campForm.max_videos_per_creator} onChange={e => setCampForm({...campForm, max_videos_per_creator: e.target.value})} /></div>
             </div>
             <Button type="submit" className="w-full" disabled={campLoading}>{campLoading ? 'Creando...' : 'Crear Campana'}</Button>
           </form>

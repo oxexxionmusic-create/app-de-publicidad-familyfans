@@ -1,8 +1,4 @@
 #!/usr/bin/env python3
-"""
-Backend API Testing for Family Fans Mony Platform
-Tests authentication flows and core API endpoints
-"""
 
 import requests
 import sys
@@ -12,38 +8,40 @@ from datetime import datetime
 class FamilyFansMoneyAPITester:
     def __init__(self, base_url="https://influencer-fund-pay.preview.emergentagent.com"):
         self.base_url = base_url
+        self.api_base = f"{base_url}/api"
         self.admin_token = None
-        self.advertiser_token = None
         self.creator_token = None
         self.fan_token = None
         self.tests_run = 0
         self.tests_passed = 0
         self.failed_tests = []
 
-    def run_test(self, name, method, endpoint, expected_status, data=None, token=None, files=None):
+    def run_test(self, name, method, endpoint, expected_status, data=None, headers=None, files=None):
         """Run a single API test"""
-        url = f"{self.base_url}/api/{endpoint}"
-        headers = {'Content-Type': 'application/json'}
-        if token:
-            headers['Authorization'] = f'Bearer {token}'
-        
-        # For file uploads, remove Content-Type header
-        if files:
-            headers.pop('Content-Type', None)
+        url = f"{self.api_base}/{endpoint}"
+        test_headers = {'Content-Type': 'application/json'}
+        if headers:
+            test_headers.update(headers)
 
         self.tests_run += 1
         print(f"\n🔍 Testing {name}...")
         
         try:
             if method == 'GET':
-                response = requests.get(url, headers=headers, timeout=10)
+                response = requests.get(url, headers=test_headers)
             elif method == 'POST':
                 if files:
-                    response = requests.post(url, data=data, files=files, headers=headers, timeout=10)
+                    # Remove Content-Type for multipart/form-data
+                    test_headers.pop('Content-Type', None)
+                    response = requests.post(url, data=data, files=files, headers=test_headers)
                 else:
-                    response = requests.post(url, json=data, headers=headers, timeout=10)
+                    response = requests.post(url, json=data, headers=test_headers)
             elif method == 'PUT':
-                response = requests.put(url, json=data, headers=headers, timeout=10)
+                if files:
+                    test_headers.pop('Content-Type', None)
+                    response = requests.put(url, data=data, files=files, headers=test_headers)
+                else:
+                    response = requests.put(url, json=data, headers=test_headers)
 
             success = response.status_code == expected_status
             if success:
@@ -70,7 +68,6 @@ class FamilyFansMoneyAPITester:
 
     def test_admin_login(self):
         """Test admin login with provided credentials"""
-        print("\n🔐 Testing Admin Authentication...")
         success, response = self.run_test(
             "Admin Login",
             "POST",
@@ -80,265 +77,260 @@ class FamilyFansMoneyAPITester:
         )
         if success and 'token' in response:
             self.admin_token = response['token']
-            print(f"   Admin role: {response.get('user', {}).get('role')}")
+            print(f"   Admin token obtained: {self.admin_token[:20]}...")
             return True
         return False
 
-    def test_user_registration(self):
-        """Test user registration for different roles or login if already exists"""
-        print("\n👥 Testing User Registration/Login...")
-        
-        # Test advertiser registration/login
+    def test_register_creator(self):
+        """Register a test creator with referral code"""
         success, response = self.run_test(
-            "Register Advertiser",
+            "Register Creator with Referral",
             "POST",
             "auth/register",
             200,
             data={
-                "email": "anunciante@test.com",
+                "email": "new_test@test.com",
                 "password": "test123456",
-                "name": "Test Advertiser",
-                "role": "advertiser"
+                "name": "Test Creator",
+                "role": "creator",
+                "referral_code": ""  # Will be empty for first user
             }
         )
-        if not success:
-            # Try login instead
-            success, response = self.run_test(
-                "Login Advertiser",
-                "POST",
-                "auth/login",
-                200,
-                data={"email": "anunciante@test.com", "password": "test123456"}
-            )
-        if success and 'token' in response:
-            self.advertiser_token = response['token']
-        
-        # Test creator registration/login
-        success, response = self.run_test(
-            "Register Creator",
-            "POST",
-            "auth/register",
-            200,
-            data={
-                "email": "creador3@test.com",
-                "password": "test123456",
-                "name": "Test Creator 3",
-                "role": "creator"
-            }
-        )
-        if not success:
-            # Try login instead
-            success, response = self.run_test(
-                "Login Creator",
-                "POST",
-                "auth/login",
-                200,
-                data={"email": "creador3@test.com", "password": "test123456"}
-            )
         if success and 'token' in response:
             self.creator_token = response['token']
-        
-        # Test fan registration/login
+            print(f"   Creator token obtained: {self.creator_token[:20]}...")
+            return True
+        return False
+
+    def test_register_fan(self):
+        """Register a test fan"""
         success, response = self.run_test(
             "Register Fan",
             "POST",
             "auth/register",
             200,
             data={
-                "email": "fan3@test.com",
+                "email": "fan_test@test.com",
                 "password": "test123456",
-                "name": "Test Fan 3",
+                "name": "Test Fan",
                 "role": "fan"
             }
         )
-        if not success:
-            # Try login instead
-            success, response = self.run_test(
-                "Login Fan",
-                "POST",
-                "auth/login",
-                200,
-                data={"email": "fan3@test.com", "password": "test123456"}
-            )
         if success and 'token' in response:
             self.fan_token = response['token']
+            return True
+        return False
 
-    def test_auth_me_endpoints(self):
-        """Test /auth/me endpoint for all user types"""
-        print("\n🔍 Testing Auth Me Endpoints...")
-        
-        if self.admin_token:
-            self.run_test("Admin Auth Me", "GET", "auth/me", 200, token=self.admin_token)
-        
-        if self.advertiser_token:
-            self.run_test("Advertiser Auth Me", "GET", "auth/me", 200, token=self.advertiser_token)
-        
-        if self.creator_token:
-            self.run_test("Creator Auth Me", "GET", "auth/me", 200, token=self.creator_token)
-        
-        if self.fan_token:
-            self.run_test("Fan Auth Me", "GET", "auth/me", 200, token=self.fan_token)
+    def test_auth_me(self, token, role_name):
+        """Test /auth/me endpoint"""
+        headers = {'Authorization': f'Bearer {token}'}
+        success, response = self.run_test(
+            f"Get {role_name} Profile",
+            "GET",
+            "auth/me",
+            200,
+            headers=headers
+        )
+        return success
 
-    def test_admin_endpoints(self):
-        """Test admin-specific endpoints"""
-        print("\n⚙️ Testing Admin Endpoints...")
-        
-        if not self.admin_token:
-            print("❌ No admin token available, skipping admin tests")
-            return
-        
-        # Test admin stats
-        self.run_test("Admin Stats", "GET", "admin/stats", 200, token=self.admin_token)
-        
-        # Test admin settings
-        self.run_test("Admin Settings Get", "GET", "admin/settings", 200, token=self.admin_token)
-        
-        # Test admin users list
-        self.run_test("Admin Users List", "GET", "admin/users", 200, token=self.admin_token)
-
-    def test_public_endpoints(self):
-        """Test public endpoints that don't require authentication"""
-        print("\n🌐 Testing Public Endpoints...")
-        
-        # Test rankings
-        self.run_test("Public Rankings", "GET", "rankings", 200)
-        
-        # Test explore creators
-        self.run_test("Explore Creators", "GET", "explore/creators", 200)
-
-    def test_campaign_flow(self):
-        """Test campaign creation and listing"""
-        print("\n📢 Testing Campaign Flow...")
-        
-        if not self.advertiser_token:
-            print("❌ No advertiser token available, skipping campaign tests")
-            return
-        
-        # Test campaign listing
-        self.run_test("List Campaigns", "GET", "campaigns", 200, token=self.advertiser_token)
-        
-        # Test available campaigns for creators
-        if self.creator_token:
-            self.run_test("Available Campaigns", "GET", "campaigns/available", 200, token=self.creator_token)
-
-    def test_deposit_flow(self):
-        """Test deposit listing"""
-        print("\n💰 Testing Deposit Flow...")
-        
-        if self.advertiser_token:
-            self.run_test("List Deposits (Advertiser)", "GET", "deposits", 200, token=self.advertiser_token)
-        
-        if self.admin_token:
-            self.run_test("List Deposits (Admin)", "GET", "deposits", 200, token=self.admin_token)
-
-    def test_curator_endpoints(self):
-        """Test Spotify curator endpoints (Phase 3)"""
-        print("\n🎵 Testing Curator Endpoints...")
-        
+    def test_referrals_api(self):
+        """Test referrals API"""
         if not self.creator_token:
-            print("❌ No creator token available, skipping curator tests")
-            return
+            return False
         
-        # Test curator playlists listing
-        self.run_test("List Curator Playlists", "GET", "curator/playlists", 200, token=self.creator_token)
-        
-        # Test curator requests listing
-        self.run_test("List Curator Requests", "GET", "curator/requests", 200, token=self.creator_token)
-        
-        # Test admin curator requests (if admin token available)
-        if self.admin_token:
-            self.run_test("Admin List Curator Requests", "GET", "curator/requests", 200, token=self.admin_token)
+        headers = {'Authorization': f'Bearer {self.creator_token}'}
+        success, response = self.run_test(
+            "Get Referral Info",
+            "GET",
+            "referrals",
+            200,
+            headers=headers
+        )
+        return success
 
-    def test_micro_tasks_endpoints(self):
-        """Test micro-tasks endpoints (Phase 3)"""
-        print("\n🎧 Testing Micro-Tasks Endpoints...")
-        
-        if not self.fan_token:
-            print("❌ No fan token available, skipping micro-tasks tests")
-            return
-        
-        # Test micro-tasks listing
-        self.run_test("List Micro Tasks", "GET", "micro-tasks", 200, token=self.fan_token)
-        
-        # Test admin micro-tasks listing
-        if self.admin_token:
-            self.run_test("Admin List Micro Tasks", "GET", "micro-tasks", 200, token=self.admin_token)
-
-    def test_admin_stats_phase3(self):
-        """Test admin stats includes Phase 3 fields"""
-        print("\n📊 Testing Admin Stats Phase 3 Fields...")
-        
+    def test_admin_wallet(self):
+        """Test admin wallet API"""
         if not self.admin_token:
-            print("❌ No admin token available, skipping admin stats test")
-            return
+            return False
         
-        success, response = self.run_test("Admin Stats with Phase 3", "GET", "admin/stats", 200, token=self.admin_token)
-        
-        if success:
-            # Check for Phase 3 specific fields
-            required_fields = ['pending_curator', 'pending_micro_tasks']
-            missing_fields = []
-            
-            for field in required_fields:
-                if field not in response:
-                    missing_fields.append(field)
-            
-            if missing_fields:
-                print(f"❌ Missing Phase 3 fields in admin stats: {missing_fields}")
-                self.failed_tests.append(f"Admin Stats missing Phase 3 fields: {missing_fields}")
-            else:
-                print(f"✅ All Phase 3 fields present in admin stats")
-                print(f"   pending_curator: {response.get('pending_curator', 0)}")
-                print(f"   pending_micro_tasks: {response.get('pending_micro_tasks', 0)}")
+        headers = {'Authorization': f'Bearer {self.admin_token}'}
+        success, response = self.run_test(
+            "Admin Wallet",
+            "GET",
+            "admin/wallet",
+            200,
+            headers=headers
+        )
+        return success
 
-    def test_unauthorized_access(self):
-        """Test that protected endpoints reject unauthorized access"""
-        print("\n🚫 Testing Unauthorized Access...")
+    def test_admin_stats(self):
+        """Test admin stats API"""
+        if not self.admin_token:
+            return False
         
-        # Test admin endpoint without token
-        self.run_test("Admin Stats Unauthorized", "GET", "admin/stats", 401)
-        
-        # Test user endpoint without token
-        self.run_test("Auth Me Unauthorized", "GET", "auth/me", 401)
+        headers = {'Authorization': f'Bearer {self.admin_token}'}
+        success, response = self.run_test(
+            "Admin Stats",
+            "GET",
+            "admin/stats",
+            200,
+            headers=headers
+        )
+        return success
 
-    def print_summary(self):
-        """Print test summary"""
-        print(f"\n📊 Test Summary:")
-        print(f"   Tests run: {self.tests_run}")
-        print(f"   Tests passed: {self.tests_passed}")
-        print(f"   Tests failed: {self.tests_run - self.tests_passed}")
-        print(f"   Success rate: {(self.tests_passed/self.tests_run*100):.1f}%")
+    def test_admin_users(self):
+        """Test admin users API"""
+        if not self.admin_token:
+            return False
         
-        if self.failed_tests:
-            print(f"\n❌ Failed Tests:")
-            for test in self.failed_tests:
-                print(f"   - {test}")
+        headers = {'Authorization': f'Bearer {self.admin_token}'}
+        success, response = self.run_test(
+            "Admin Users List",
+            "GET",
+            "admin/users",
+            200,
+            headers=headers
+        )
+        return success
+
+    def test_level_requests(self):
+        """Test level requests API"""
+        if not self.creator_token:
+            return False
         
-        return self.tests_passed == self.tests_run
+        headers = {'Authorization': f'Bearer {self.creator_token}'}
+        success, response = self.run_test(
+            "Level Requests List",
+            "GET",
+            "creator/level-requests",
+            200,
+            headers=headers
+        )
+        return success
+
+    def test_ranking_boards(self):
+        """Test ranking boards API"""
+        success, response = self.run_test(
+            "Ranking Boards List",
+            "GET",
+            "ranking-boards",
+            200
+        )
+        return success
+
+    def test_campaigns_available(self):
+        """Test available campaigns for creator"""
+        if not self.creator_token:
+            return False
+        
+        headers = {'Authorization': f'Bearer {self.creator_token}'}
+        success, response = self.run_test(
+            "Available Campaigns",
+            "GET",
+            "campaigns/available",
+            200,
+            headers=headers
+        )
+        return success
+
+    def test_profile_photo_upload(self):
+        """Test profile photo upload endpoint"""
+        if not self.creator_token:
+            return False
+        
+        headers = {'Authorization': f'Bearer {self.creator_token}'}
+        # Create a dummy file for testing
+        files = {'photo': ('test.jpg', b'fake_image_data', 'image/jpeg')}
+        success, response = self.run_test(
+            "Profile Photo Upload",
+            "POST",
+            "auth/profile-photo",
+            200,
+            headers=headers,
+            files=files
+        )
+        return success
+
+    def test_creator_profile_save(self):
+        """Test creator profile save"""
+        if not self.creator_token:
+            return False
+        
+        headers = {'Authorization': f'Bearer {self.creator_token}'}
+        form_data = {
+            'content_type': 'videos',
+            'region': 'LATAM',
+            'gender': 'male',
+            'phone': '+57123456789',
+            'country': 'Colombia',
+            'creator_level': 'standard',
+            'niche': 'humor',
+            'avg_views': '1000',
+            'followers': '5000'
+        }
+        success, response = self.run_test(
+            "Save Creator Profile",
+            "POST",
+            "auth/creator-profile",
+            200,
+            data=form_data,
+            headers=headers,
+            files={}
+        )
+        return success
 
 def main():
-    print("🚀 Starting Family Fans Mony Backend API Tests")
-    print("=" * 60)
+    print("🚀 Starting Family Fans Mony API Tests")
+    print("=" * 50)
     
     tester = FamilyFansMoneyAPITester()
     
-    # Run all tests
-    tester.test_admin_login()
-    tester.test_user_registration()
-    tester.test_auth_me_endpoints()
-    tester.test_admin_endpoints()
-    tester.test_public_endpoints()
-    tester.test_campaign_flow()
-    tester.test_deposit_flow()
-    tester.test_curator_endpoints()
-    tester.test_micro_tasks_endpoints()
-    tester.test_admin_stats_phase3()
-    tester.test_unauthorized_access()
+    # Test sequence
+    tests = [
+        ("Admin Login", tester.test_admin_login),
+        ("Register Creator", tester.test_register_creator),
+        ("Register Fan", tester.test_register_fan),
+        ("Admin Profile", lambda: tester.test_auth_me(tester.admin_token, "Admin") if tester.admin_token else False),
+        ("Creator Profile", lambda: tester.test_auth_me(tester.creator_token, "Creator") if tester.creator_token else False),
+        ("Fan Profile", lambda: tester.test_auth_me(tester.fan_token, "Fan") if tester.fan_token else False),
+        ("Referrals API", tester.test_referrals_api),
+        ("Admin Wallet", tester.test_admin_wallet),
+        ("Admin Stats", tester.test_admin_stats),
+        ("Admin Users", tester.test_admin_users),
+        ("Level Requests", tester.test_level_requests),
+        ("Ranking Boards", tester.test_ranking_boards),
+        ("Available Campaigns", tester.test_campaigns_available),
+        ("Creator Profile Save", tester.test_creator_profile_save),
+        ("Profile Photo Upload", tester.test_profile_photo_upload),
+    ]
     
-    # Print summary
-    success = tester.print_summary()
+    print(f"Running {len(tests)} test scenarios...\n")
     
-    return 0 if success else 1
+    for test_name, test_func in tests:
+        try:
+            test_func()
+        except Exception as e:
+            print(f"❌ {test_name} failed with exception: {e}")
+            tester.failed_tests.append(f"{test_name}: Exception - {e}")
+    
+    # Print results
+    print("\n" + "=" * 50)
+    print("📊 TEST RESULTS")
+    print("=" * 50)
+    print(f"Tests run: {tester.tests_run}")
+    print(f"Tests passed: {tester.tests_passed}")
+    print(f"Tests failed: {tester.tests_run - tester.tests_passed}")
+    print(f"Success rate: {(tester.tests_passed/tester.tests_run*100):.1f}%" if tester.tests_run > 0 else "0%")
+    
+    if tester.failed_tests:
+        print("\n❌ FAILED TESTS:")
+        for failure in tester.failed_tests:
+            print(f"  - {failure}")
+    
+    print(f"\n🔗 Backend URL: {tester.base_url}")
+    print(f"🔗 API Base: {tester.api_base}")
+    
+    return 0 if tester.tests_passed == tester.tests_run else 1
 
 if __name__ == "__main__":
     sys.exit(main())

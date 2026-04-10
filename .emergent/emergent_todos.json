@@ -1,38 +1,18 @@
 [
   {
-    "content": "Phase 1: POC - Ledger/Financial Core (test script)",
+    "content": "Remove Emergent dependencies from code",
     "status": "completed"
   },
   {
-    "content": "Phase 2: Design Guidelines",
+    "content": "Backend: Referral system, campaign enhancements, deliverable flow, level requests, multi-platform, admin wallet, creator profile photo",
     "status": "completed"
   },
   {
-    "content": "Phase 2: Backend - Auth, Roles, Models, All Endpoints",
+    "content": "Frontend: All 7 feature groups UI",
     "status": "completed"
   },
   {
-    "content": "Phase 2: Frontend - Complete UI (all roles)",
-    "status": "completed"
-  },
-  {
-    "content": "Phase 2: E2E Testing + Bug Fixes",
-    "status": "completed"
-  },
-  {
-    "content": "Phase 2: All user stories covered",
-    "status": "completed"
-  },
-  {
-    "content": "Create Render Deployment Guide + Remove Emergent branding",
-    "status": "completed"
-  },
-  {
-    "content": "Phase 3: Spotify Curators + Micro-tasks backend/frontend",
-    "status": "completed"
-  },
-  {
-    "content": "Phase 3: E2E Testing + Bug Fix (Textarea import)",
-    "status": "completed"
+    "content": "E2E Testing of new features",
+    "status": "in_progress"
   }
 ]

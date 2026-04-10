@@ -15,6 +15,7 @@ export default function Register() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [role, setRole] = useState('fan');
+  const [referralCode, setReferralCode] = useState('');
   const [loading, setLoading] = useState(false);
   const { login } = useAuth();
   const navigate = useNavigate();
@@ -27,7 +28,7 @@ export default function Register() {
     }
     setLoading(true);
     try {
-      const res = await authAPI.register({ name, email, password, role });
+      const res = await authAPI.register({ name, email, password, role, referral_code: referralCode });
       login(res.data.token, res.data.user);
       toast.success('Cuenta creada exitosamente');
       if (role === 'advertiser') navigate('/advertiser');
@@ -113,6 +114,10 @@ export default function Register() {
                   <Lock className="absolute left-3 top-3 w-4 h-4 text-muted-foreground" />
                   <Input id="password" type="password" placeholder="Mínimo 6 caracteres" value={password} onChange={e => setPassword(e.target.value)} className="pl-10" required data-testid="register-password-input" />
                 </div>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="referral">Codigo de Referido (opcional)</Label>
+                <Input id="referral" placeholder="Ej: AB12CD34" value={referralCode} onChange={e => setReferralCode(e.target.value)} data-testid="register-referral-input" />
               </div>
               <Button type="submit" className="w-full" disabled={loading} data-testid="register-form-submit-button">
                 {loading ? 'Creando cuenta...' : 'Crear Cuenta'}

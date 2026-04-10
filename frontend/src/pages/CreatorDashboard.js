@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@/App';
 import { Link, useNavigate } from 'react-router-dom';
-import { authAPI, campaignsAPI, applicationsAPI, deliverablesAPI, transactionsAPI, withdrawalsAPI, kycAPI, subscriptionsAPI, premiumContentAPI, musicFinancingAPI, curatorAPI } from '@/lib/api';
+import { authAPI, campaignsAPI, applicationsAPI, deliverablesAPI, transactionsAPI, withdrawalsAPI, kycAPI, subscriptionsAPI, premiumContentAPI, musicFinancingAPI, curatorAPI, referralsAPI, levelRequestsAPI, profilePhotoAPI, deliverableActionsAPI } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -13,7 +13,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { toast } from 'sonner';
 import {
   Wallet, Megaphone, FileCheck, DollarSign, ShieldCheck, Music, Crown, Upload, Plus,
-  LogOut, Zap, Eye, Users, TrendingUp, CreditCard, ArrowRight, CheckCircle2, Image, Video
+  LogOut, Zap, Eye, Users, TrendingUp, CreditCard, ArrowRight, CheckCircle2, Image, Video,
+  Share2, Camera, Award, Clock
 } from 'lucide-react';
 
 function StatusBadge({ status }) {
@@ -77,6 +78,12 @@ export default function CreatorDashboard() {
   const [curatorEvidence, setCuratorEvidence] = useState(null);
   const [curatorRequests, setCuratorRequests] = useState([]);
 
+  // Referrals
+  const [referralInfo, setReferralInfo] = useState(null);
+  // Level Request
+  const [showLevelReq, setShowLevelReq] = useState(false);
+  const [levelReqForm, setLevelReqForm] = useState({ requested_level: 'micro', justification: '', portfolio_links: '' });
+
   const load = useCallback(async () => {
     setLoading(true);
     try {
@@ -91,6 +98,7 @@ export default function CreatorDashboard() {
         const [pl, cr] = await Promise.all([curatorAPI.playlists(), curatorAPI.requests()]);
         setPlaylists(pl.data); setCuratorRequests(cr.data);
       } catch {}
+      try { const ref = await referralsAPI.get(); setReferralInfo(ref.data); } catch {}
       await refreshUser();
     } catch {}
     setLoading(false);
@@ -251,6 +259,40 @@ export default function CreatorDashboard() {
     } catch (err) { toast.error(err.response?.data?.detail || 'Error'); }
   };
 
+  const handleLevelRequest = async (e) => {
+    e.preventDefault();
+    try {
+      const fd = new FormData();
+      fd.append('requested_level', levelReqForm.requested_level);
+      fd.append('justification', levelReqForm.justification);
+      fd.append('portfolio_links', levelReqForm.portfolio_links);
+      await levelRequestsAPI.request(fd);
+      toast.success('Solicitud de nivel enviada');
+      setShowLevelReq(false);
+      await refreshUser();
+    } catch (err) { toast.error(err.response?.data?.detail || 'Error'); }
+  };
+
+  const handleProfilePhoto = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    try {
+      const fd = new FormData();
+      fd.append('photo', file);
+      await profilePhotoAPI.upload(fd);
+      toast.success('Foto actualizada');
+      await refreshUser();
+    } catch (err) { toast.error('Error al subir foto'); }
+  };
+
+  const handleClaimBonus = async (delId) => {
+    try {
+      await deliverableActionsAPI.claimBonus(delId);
+      toast.success('Bonus reclamado');
+      load();
+    } catch (err) { toast.error(err.response?.data?.detail || 'Error'); }
+  };
+
   const acceptedApps = applications.filter(a => a.status === 'accepted');
   const totalEarnings = transactions.filter(t => t.amount > 0).reduce((sum, t) => sum + t.amount, 0);
 
@@ -302,7 +344,61 @@ export default function CreatorDashboard() {
               <Button onClick={() => setShowWithdrawal(true)} data-testid="creator-withdrawal-request-button"><CreditCard className="w-4 h-4 mr-1" /> Solicitar Retiro</Button>
               <Button onClick={() => setShowPremium(true)} variant="outline"><Crown className="w-4 h-4 mr-1" /> Config. Premium</Button>
               <Button onClick={() => setShowFinancing(true)} variant="outline"><Music className="w-4 h-4 mr-1" /> Financiamiento</Button>
+              {!user?.level_request_pending && <Button onClick={() => setShowLevelReq(true)} variant="outline"><Award className="w-4 h-4 mr-1" /> Subir de Nivel</Button>}
+              <label className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border border-border/50 text-sm cursor-pointer hover:bg-secondary">
+                <Camera className="w-4 h-4" /> Foto de Perfil
+                <input type="file" accept="image/*" className="hidden" onChange={handleProfilePhoto} />
+              </label>
             </div>
+
+            {/* Referral Info */}
+            {referralInfo && (
+              <Card className="border-border/50 mb-6">
+                <CardContent className="p-4">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Share2 className="w-5 h-5 text-primary" />
+                    <p className="font-semibold text-sm" style={{fontFamily:'Space Grotesk'}}>Programa de Referidos</p>
+                  </div>
+                  <div className="flex items-center gap-3 p-3 rounded-lg bg-[hsl(var(--surface-2))]">
+                    <div className="flex-1">
+                      <p className="text-xs text-muted-foreground">Tu codigo de referido:</p>
+                      <p className="font-mono text-primary font-semibold">{referralInfo.referral_code}</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-xs text-muted-foreground">{referralInfo.referrals_count} referidos</p>
+                      <p className="text-sm font-semibold tabular-nums text-[hsl(152,58%,44%)]">${referralInfo.total_referral_earnings?.toFixed(4)} ganados</p>
+                    </div>
+                    <Button size="sm" variant="outline" onClick={() => { navigator.clipboard.writeText(referralInfo.referral_code); toast.success('Codigo copiado'); }}>Copiar</Button>
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-2">Ganas 5% de la comision de la plataforma por cada ingreso de tus referidos, de por vida.</p>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Active deliverables with permanence timer */}
+            {deliverables.filter(d => d.status === 'approved' && !d.final_payment_released).length > 0 && (
+              <Card className="border-primary/30 mb-6">
+                <CardContent className="p-4">
+                  <div className="flex items-center gap-2 mb-3"><Clock className="w-5 h-5 text-primary" /><p className="font-semibold text-sm">Campanas Activas - Tiempo de Permanencia</p></div>
+                  {deliverables.filter(d => d.status === 'approved' && !d.final_payment_released).map(d => {
+                    const endDate = d.permanence_end ? new Date(d.permanence_end) : null;
+                    const daysLeft = endDate ? Math.max(0, Math.ceil((endDate - new Date()) / (1000*60*60*24))) : 0;
+                    return (
+                      <div key={d.id} className="flex items-center justify-between p-2 rounded-lg bg-[hsl(var(--surface-2))] mb-1">
+                        <div>
+                          <p className="text-sm">{d.creator_name}</p>
+                          <p className="text-xs text-muted-foreground">40% liberado · 60% pendiente${d.held_payout ? ` ($${d.held_payout})` : ''}</p>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-sm font-semibold tabular-nums text-primary">{daysLeft} dias restantes</p>
+                          {!d.bonus_claimed && <Button size="sm" variant="outline" className="h-6 text-xs mt-1" onClick={() => handleClaimBonus(d.id)}>Reclamar Bonus</Button>}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </CardContent>
+              </Card>
+            )}
             {!user?.creator_profile && (
               <Card className="border-[hsl(var(--status-pending))]/30 bg-[hsl(var(--status-pending))]/5 mb-6">
                 <CardContent className="p-4 flex items-center justify-between">
@@ -664,6 +760,29 @@ export default function CreatorDashboard() {
             <div><Label>Descripcion de Evidencia</Label><Textarea value={curatorPayForm.evidence_description} onChange={e => setCuratorPayForm({...curatorPayForm, evidence_description: e.target.value})} placeholder="Describe las pruebas de escucha..." /></div>
             <div><Label>Captura de Evidencia</Label><Input type="file" accept="image/*" onChange={e => setCuratorEvidence(e.target.files[0])} /></div>
             <Button type="submit" className="w-full">Solicitar Pago</Button>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Level Up Request */}
+      <Dialog open={showLevelReq} onOpenChange={setShowLevelReq}>
+        <DialogContent>
+          <DialogHeader><DialogTitle style={{fontFamily:'Space Grotesk'}}>Solicitar Subir de Nivel</DialogTitle></DialogHeader>
+          <form onSubmit={handleLevelRequest} className="space-y-4">
+            <div>
+              <Label>Nivel Solicitado</Label>
+              <Select value={levelReqForm.requested_level} onValueChange={v => setLevelReqForm({...levelReqForm, requested_level: v})}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="micro">Micro-Influencer</SelectItem>
+                  <SelectItem value="small">Influencer Pequeno</SelectItem>
+                  <SelectItem value="top10_level">Top 10</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div><Label>Justificacion</Label><Textarea value={levelReqForm.justification} onChange={e => setLevelReqForm({...levelReqForm, justification: e.target.value})} placeholder="Explica por que mereces subir de nivel..." /></div>
+            <div><Label>Enlaces de Portafolio</Label><Textarea value={levelReqForm.portfolio_links} onChange={e => setLevelReqForm({...levelReqForm, portfolio_links: e.target.value})} placeholder="Enlace 1, Enlace 2..." /></div>
+            <Button type="submit" className="w-full">Enviar Solicitud</Button>
           </form>
         </DialogContent>
       </Dialog>

@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@/App';
 import { Routes, Route, Link, useLocation, useNavigate } from 'react-router-dom';
-import { adminAPI, depositsAPI, kycAPI, deliverablesAPI, withdrawalsAPI, transactionsAPI, musicFinancingAPI, campaignsAPI, curatorAPI, microTasksAPI } from '@/lib/api';
+import { adminAPI, depositsAPI, kycAPI, deliverablesAPI, withdrawalsAPI, transactionsAPI, musicFinancingAPI, campaignsAPI, curatorAPI, microTasksAPI, levelRequestsAPI, adminWalletAPI, rankingBoardsAPI, deliverableActionsAPI, adminLevelAPI } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -42,6 +42,9 @@ function Sidebar({ stats }) {
     { to: '/admin/financing', icon: Music, label: 'Financiamiento', key: 'financing', badge: stats?.pending_financing },
     { to: '/admin/curators', icon: Music, label: 'Curadores', key: 'curators', badge: stats?.pending_curator },
     { to: '/admin/microtasks', icon: Music, label: 'Micro-tareas', key: 'microtasks', badge: stats?.pending_micro_tasks },
+    { to: '/admin/levels', icon: TrendingUp, label: 'Niveles', key: 'levels', badge: stats?.pending_level_requests },
+    { to: '/admin/wallet', icon: DollarSign, label: 'Billetera', key: 'wallet' },
+    { to: '/admin/ranking-boards', icon: TrendingUp, label: 'Tableros Ranking', key: 'ranking-boards' },
     { to: '/admin/users', icon: Users, label: 'Usuarios', key: 'users' },
     { to: '/admin/transactions', icon: List, label: 'Transacciones', key: 'transactions' },
     { to: '/admin/settings', icon: Settings, label: 'Configuracion', key: 'settings' },
@@ -219,6 +222,17 @@ function AdminList({ title, fetchFn, approveFn, rejectFn, columns, type }) {
                       <Button size="sm" variant="destructive" onClick={() => handleReject(item.id)}>
                         <XCircle className="w-4 h-4 mr-1" /> Rechazar
                       </Button>
+                    </div>
+                  )}
+                  {item.status === 'approved' && item.final_payment_released === false && type === 'deliverables' && (
+                    <div className="flex items-center gap-2">
+                      <div className="text-xs text-right">
+                        <p className="text-[hsl(var(--status-pending))]">40% liberado · 60% retenido</p>
+                        {item.permanence_end && <p className="text-muted-foreground">Permanencia hasta: {new Date(item.permanence_end).toLocaleDateString('es-ES')}</p>}
+                      </div>
+                      <Button size="sm" variant="outline" onClick={async () => {
+                        try { await (await import('@/lib/api')).deliverableActionsAPI.releaseFinal(item.id); toast.success('Pago final liberado'); load(); } catch(e) { toast.error(e.response?.data?.detail || 'Error'); }
+                      }}>Liberar 60%</Button>
                     </div>
                   )}
                 </div>
@@ -426,6 +440,167 @@ function AdminCampaigns() {
   );
 }
 
+// Admin Wallet
+function AdminWallet() {
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  useEffect(() => { adminWalletAPI.get().then(res => { setData(res.data); setLoading(false); }).catch(() => setLoading(false)); }, []);
+
+  if (loading) return <div className="h-32 rounded-lg bg-[hsl(var(--surface-2))] animate-pulse" />;
+  return (
+    <div className="space-y-4">
+      <h2 className="text-xl font-semibold" style={{fontFamily:'Space Grotesk'}}>Billetera de la Plataforma</h2>
+      <div className="kpi-card">
+        <p className="text-xs text-muted-foreground mb-1">Total Comisiones Acumuladas</p>
+        <p className="text-3xl font-semibold tabular-nums text-primary" style={{fontFamily:'Space Grotesk'}}>${data?.total_commissions?.toFixed(2) || '0.00'}</p>
+      </div>
+      <h3 className="text-base font-medium">Historial de Comisiones</h3>
+      <div className="space-y-1">
+        {(data?.transactions || []).map(t => (
+          <div key={t.id} className="flex items-center justify-between p-3 rounded-lg bg-[hsl(var(--surface-2))]">
+            <div><p className="text-sm">{t.description}</p><p className="text-xs text-muted-foreground">{new Date(t.created_at).toLocaleDateString('es-ES')}</p></div>
+            <p className="font-semibold tabular-nums text-sm text-[hsl(152,58%,44%)]">+${t.amount?.toFixed(2)}</p>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// Admin Ranking Boards
+function AdminRankingBoards() {
+  const [boards, setBoards] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [newName, setNewName] = useState('');
+  const [newDesc, setNewDesc] = useState('');
+
+  const load = () => { rankingBoardsAPI.list().then(res => { setBoards(res.data); setLoading(false); }).catch(() => setLoading(false)); };
+  useEffect(() => { load(); }, []);
+
+  const handleCreate = async () => {
+    if (!newName) return;
+    const fd = new FormData();
+    fd.append('name', newName);
+    fd.append('description', newDesc);
+    try {
+      await rankingBoardsAPI.create(fd);
+      toast.success('Tablero creado');
+      setNewName(''); setNewDesc('');
+      load();
+    } catch (err) { toast.error('Error'); }
+  };
+
+  return (
+    <div className="space-y-4">
+      <h2 className="text-xl font-semibold" style={{fontFamily:'Space Grotesk'}}>Tableros de Ranking Personalizados</h2>
+      <Card className="border-border/50">
+        <CardContent className="p-4 space-y-3">
+          <p className="text-sm font-medium">Crear Nuevo Tablero</p>
+          <div className="flex gap-2">
+            <Input placeholder="Nombre del tablero" value={newName} onChange={e => setNewName(e.target.value)} />
+            <Input placeholder="Descripcion (opcional)" value={newDesc} onChange={e => setNewDesc(e.target.value)} />
+            <Button onClick={handleCreate}>Crear</Button>
+          </div>
+        </CardContent>
+      </Card>
+      {loading ? <div className="h-32 rounded-lg bg-[hsl(var(--surface-2))] animate-pulse" /> : boards.length === 0 ? (
+        <Card className="border-border/50"><CardContent className="p-8 text-center text-muted-foreground">Sin tableros personalizados</CardContent></Card>
+      ) : (
+        <div className="space-y-3">
+          {boards.map(b => (
+            <Card key={b.id} className="border-border/50">
+              <CardContent className="p-4">
+                <p className="font-semibold">{b.name}</p>
+                {b.description && <p className="text-xs text-muted-foreground">{b.description}</p>}
+                <p className="text-xs text-muted-foreground mt-1">{(b.entries || []).length} creadores</p>
+                {(b.entries || []).map((e, i) => (
+                  <span key={i} className="inline-block text-xs bg-[hsl(var(--surface-3))] px-2 py-1 rounded mr-1 mt-1">{e.name}</span>
+                ))}
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Enhanced Admin Users with level setting
+function AdminUsersEnhanced() {
+  const [users, setUsers] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [roleFilter, setRoleFilter] = useState('');
+
+  const load = () => {
+    setLoading(true);
+    adminAPI.users(roleFilter || undefined).then(res => { setUsers(res.data); setLoading(false); }).catch(() => setLoading(false));
+  };
+  useEffect(() => { load(); }, [roleFilter]);
+
+  const toggleTop10 = async (userId, current) => {
+    const fd = new FormData();
+    fd.append('is_top10', !current);
+    try { await adminAPI.toggleTop10(userId, fd); toast.success(`Top 10 ${!current ? 'activado' : 'desactivado'}`); load(); } catch { toast.error('Error'); }
+  };
+
+  const setLevel = async (userId, level) => {
+    const fd = new FormData();
+    fd.append('level', level);
+    try { await adminLevelAPI.setLevel(userId, fd); toast.success(`Nivel actualizado a ${level}`); load(); } catch { toast.error('Error'); }
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <h2 className="text-xl font-semibold" style={{fontFamily:'Space Grotesk'}}>Usuarios</h2>
+        <div className="flex gap-2">
+          {['', 'advertiser', 'creator', 'fan'].map(r => (
+            <Button key={r} variant={roleFilter === r ? 'default' : 'outline'} size="sm" onClick={() => setRoleFilter(r)}>{r || 'Todos'}</Button>
+          ))}
+        </div>
+      </div>
+      {loading ? <div className="h-32 rounded-lg bg-[hsl(var(--surface-2))] animate-pulse" /> : (
+        <div className="space-y-2">
+          {users.map(u => (
+            <Card key={u.id} className="border-border/50">
+              <CardContent className="p-4">
+                <div className="flex items-center justify-between flex-wrap gap-3">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      {u.profile_photo_url && <img src={u.profile_photo_url.startsWith('/') ? `${window.location.origin}${u.profile_photo_url}` : u.profile_photo_url} className="w-8 h-8 rounded-full object-cover" alt="" />}
+                      <p className="font-medium text-sm">{u.name}</p>
+                      <span className="text-xs px-2 py-0.5 rounded-full bg-[hsl(var(--surface-3))] capitalize">{u.role}</span>
+                      {u.is_top10 && <span className="text-xs bg-[hsl(43,96%,56%)]/20 text-[hsl(43,96%,56%)] px-2 py-0.5 rounded-full">Top 10</span>}
+                      {u.creator_profile?.creator_level && <span className="text-xs px-2 py-0.5 rounded-full bg-primary/10 text-primary capitalize">{u.creator_profile.creator_level}</span>}
+                    </div>
+                    <p className="text-xs text-muted-foreground">{u.email} · Saldo: ${(u.balance || 0).toFixed(2)} · Ref: {u.referral_code || 'N/A'}</p>
+                    {u.referred_by && <p className="text-xs text-muted-foreground">Referido por: {u.referred_by}</p>}
+                  </div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    {u.role === 'creator' && (
+                      <>
+                        <select className="text-xs bg-[hsl(var(--surface-2))] border border-border rounded px-2 py-1" defaultValue={u.creator_profile?.creator_level || 'standard'} onChange={e => setLevel(u.id, e.target.value)}>
+                          <option value="standard">Estandar</option>
+                          <option value="micro">Micro</option>
+                          <option value="small">Pequeno</option>
+                          <option value="top10_level">Top 10</option>
+                        </select>
+                        <Button size="sm" variant={u.is_top10 ? 'destructive' : 'outline'} onClick={() => toggleTop10(u.id, u.is_top10)}>
+                          {u.is_top10 ? 'Quitar Top 10' : 'Top 10'}
+                        </Button>
+                      </>
+                    )}
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function AdminDashboard() {
   const [stats, setStats] = useState(null);
   const load = useCallback(() => { adminAPI.stats().then(res => setStats(res.data)).catch(() => {}); }, []);
@@ -465,7 +640,13 @@ export default function AdminDashboard() {
             <AdminList title="Micro-tareas (Escuchar Musica)" fetchFn={microTasksAPI.list} approveFn={microTasksAPI.approve} rejectFn={microTasksAPI.reject} type="microtasks"
               columns={[{key:'user_email'}, {render: i => `${i.songs_listened} canciones · $${i.calculated_payout}`}]} />
           } />
-          <Route path="users" element={<AdminUsers />} />
+          <Route path="levels" element={
+            <AdminList title="Solicitudes de Nivel" fetchFn={levelRequestsAPI.list} approveFn={levelRequestsAPI.approve} rejectFn={levelRequestsAPI.reject} type="levels"
+              columns={[{key:'user_name'}, {render: i => `${i.current_level} → ${i.requested_level}`}, {key:'justification'}]} />
+          } />
+          <Route path="wallet" element={<AdminWallet />} />
+          <Route path="ranking-boards" element={<AdminRankingBoards />} />
+          <Route path="users" element={<AdminUsersEnhanced />} />
           <Route path="campaigns" element={<AdminCampaigns />} />
           <Route path="transactions" element={<AdminTransactions />} />
           <Route path="settings" element={<AdminSettings />} />

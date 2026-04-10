@@ -151,6 +151,52 @@ export const curatorAPI = {
   rejectRequest: (id, note) => api.put(`/admin/curator/requests/${id}/reject?note=${encodeURIComponent(note || '')}`),
 };
 
+// Referrals
+export const referralsAPI = {
+  get: () => api.get('/referrals'),
+};
+
+// Level Requests
+export const levelRequestsAPI = {
+  request: (formData) => api.post('/creator/level-request', formData, { headers: { 'Content-Type': 'multipart/form-data' } }),
+  list: () => api.get('/creator/level-requests'),
+  approve: (id) => api.put(`/admin/level-requests/${id}/approve`),
+  reject: (id) => api.put(`/admin/level-requests/${id}/reject`),
+};
+
+// Profile Photo
+export const profilePhotoAPI = {
+  upload: (formData) => api.post('/auth/profile-photo', formData, { headers: { 'Content-Type': 'multipart/form-data' } }),
+};
+
+// Admin Wallet
+export const adminWalletAPI = {
+  get: () => api.get('/admin/wallet'),
+};
+
+// Ranking Boards
+export const rankingBoardsAPI = {
+  list: () => api.get('/ranking-boards'),
+  create: (formData) => api.post('/admin/ranking-boards', formData, { headers: { 'Content-Type': 'multipart/form-data' } }),
+  addCreator: (boardId, formData) => api.put(`/admin/ranking-boards/${boardId}/add-creator`, formData, { headers: { 'Content-Type': 'multipart/form-data' } }),
+};
+
+// Deliverable actions
+export const deliverableActionsAPI = {
+  releaseFinal: (id) => api.put(`/admin/deliverables/${id}/release-final`),
+  claimBonus: (id) => api.put(`/deliverables/${id}/claim-bonus`),
+};
+
+// Campaign media
+export const campaignMediaAPI = {
+  upload: (campaignId, formData) => api.post(`/campaigns/${campaignId}/media`, formData, { headers: { 'Content-Type': 'multipart/form-data' } }),
+};
+
+// Admin set level
+export const adminLevelAPI = {
+  setLevel: (userId, formData) => api.put(`/admin/users/${userId}/level`, formData, { headers: { 'Content-Type': 'multipart/form-data' } }),
+};
+
 // Micro Tasks
 export const microTasksAPI = {
   submit: (formData) => api.post('/micro-tasks', formData, { headers: { 'Content-Type': 'multipart/form-data' } }),

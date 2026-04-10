@@ -3,11 +3,11 @@ from fastapi.staticfiles import StaticFiles
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
-import os, logging, uuid, aiofiles
+import os, logging, uuid, aiofiles, random, string
 from pathlib import Path
 from pydantic import BaseModel, Field
 from typing import List, Optional
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from bson import ObjectId
 
 from auth import (
@@ -93,16 +93,23 @@ async def startup():
         logger.info("Platform settings seeded")
     # Create indexes
     await db.users.create_index("email", unique=True)
+    await db.users.create_index("referral_code")
     await db.campaigns.create_index("status")
     await db.deposits.create_index("status")
     await db.transactions.create_index("user_id")
+    
+    # Migrate: add referral_code to existing users without one
+    async for user in db.users.find({"referral_code": {"$exists": False}}):
+        code = ''.join(random.choices(string.ascii_uppercase + string.digits, k=8))
+        await db.users.update_one({"_id": user["_id"]}, {"$set": {"referral_code": code, "referred_by": None, "profile_photo_url": "", "level_request_pending": False}})
 
 # ===================== AUTH =====================
 class RegisterReq(BaseModel):
     email: str
     password: str
     name: str
-    role: str = "fan"  # fan, advertiser, creator
+    role: str = "fan"
+    referral_code: str = ""
 
 class LoginReq(BaseModel):
     email: str
@@ -115,6 +122,16 @@ async def register(req: RegisterReq):
     existing = await db.users.find_one({"email": req.email})
     if existing:
         raise HTTPException(400, "Email ya registrado")
+    # Generate unique referral code
+    ref_code = ''.join(random.choices(string.ascii_uppercase + string.digits, k=8))
+    
+    # Check referral
+    referred_by = None
+    if req.referral_code:
+        referrer = await db.users.find_one({"referral_code": req.referral_code})
+        if referrer:
+            referred_by = str(referrer["_id"])
+    
     user = {
         "email": req.email,
         "password_hash": hash_password(req.password),
@@ -124,11 +141,14 @@ async def register(req: RegisterReq):
         "kyc_status": "none",
         "is_top10": False,
         "created_at": now_iso(),
-        # Creator extended fields
         "creator_profile": None,
         "phone": "",
         "country": "",
         "gender": "",
+        "referral_code": ref_code,
+        "referred_by": referred_by,
+        "profile_photo_url": "",
+        "level_request_pending": False,
     }
     result = await db.users.insert_one(user)
     user["_id"] = result.inserted_id
@@ -336,12 +356,21 @@ class CampaignCreate(BaseModel):
     bonus_threshold_views: int = 0
     bonus_amount: float = 0
     influencer_level: str = "any"
+    external_link: str = ""
+    max_videos_per_creator: int = 1
 
 @api.post("/campaigns")
 async def create_campaign(req: CampaignCreate, user=Depends(require_advertiser)):
     u = await db.users.find_one({"_id": ObjectId(user["sub"])})
     if u["balance"] < req.budget:
         raise HTTPException(400, f"Saldo insuficiente. Tienes ${u['balance']}, necesitas ${req.budget}")
+    
+    # Check if region has creators
+    region_warning = ""
+    if req.region:
+        region_count = await db.users.count_documents({"role": "creator", "creator_profile.region": req.region})
+        if region_count == 0:
+            region_warning = f"No hay creadores en {req.region}. La campaña se propondrá a creadores que cumplan el resto de requisitos."
     
     campaign = {
         "advertiser_id": user["sub"],
@@ -361,6 +390,11 @@ async def create_campaign(req: CampaignCreate, user=Depends(require_advertiser))
         "bonus_threshold_views": req.bonus_threshold_views,
         "bonus_amount": req.bonus_amount,
         "influencer_level": req.influencer_level,
+        "external_link": req.external_link,
+        "max_videos_per_creator": req.max_videos_per_creator,
+        "audio_url": "",
+        "photo_url": "",
+        "region_warning": region_warning,
         "status": "active",
         "created_at": now_iso(),
     }
@@ -422,6 +456,25 @@ async def get_campaign(campaign_id: str, user=Depends(get_current_user)):
         raise HTTPException(404, "Campaña no encontrada")
     return serialize_doc(c)
 
+@api.post("/campaigns/{campaign_id}/media")
+async def upload_campaign_media(
+    campaign_id: str,
+    audio: Optional[UploadFile] = File(None),
+    photo: Optional[UploadFile] = File(None),
+    user=Depends(require_advertiser)
+):
+    c = await db.campaigns.find_one({"_id": ObjectId(campaign_id)})
+    if not c or (c["advertiser_id"] != user["sub"] and user["role"] != "admin"):
+        raise HTTPException(403, "No autorizado")
+    update = {}
+    if audio:
+        update["audio_url"] = await save_upload(audio)
+    if photo:
+        update["photo_url"] = await save_upload(photo)
+    if update:
+        await db.campaigns.update_one({"_id": ObjectId(campaign_id)}, {"$set": update})
+    return {"message": "Media subida", **update}
+
 @api.put("/campaigns/{campaign_id}/cancel")
 async def cancel_campaign(campaign_id: str, user=Depends(get_current_user)):
     c = await db.campaigns.find_one({"_id": ObjectId(campaign_id)})
@@ -450,13 +503,30 @@ async def create_application(
     user=Depends(require_creator)
 ):
     # Check not already applied
-    existing = await db.applications.find_one({"campaign_id": campaign_id, "creator_id": user["sub"]})
+    existing = await db.applications.find_one({"campaign_id": campaign_id, "creator_id": user["sub"], "status": {"$in": ["pending", "accepted"]}})
     if existing:
-        raise HTTPException(400, "Ya te postulaste a esta campaña")
+        raise HTTPException(400, "Ya tienes una aplicación activa para esta campaña")
+    
+    # Check 24h cooldown after expired/rejected application
+    recent_expired = await db.applications.find_one({
+        "campaign_id": campaign_id, "creator_id": user["sub"],
+        "status": {"$in": ["expired", "rejected"]},
+        "updated_at": {"$gte": (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat()}
+    })
+    if recent_expired:
+        raise HTTPException(400, "Debes esperar 24 horas antes de volver a aplicar a esta campaña")
     
     c = await db.campaigns.find_one({"_id": ObjectId(campaign_id), "status": "active"})
     if not c:
         raise HTTPException(404, "Campaña no encontrada o inactiva")
+    
+    # Check max videos per creator
+    max_per = c.get("max_videos_per_creator", 1)
+    creator_deliverables = await db.deliverables.count_documents({
+        "campaign_id": campaign_id, "creator_id": user["sub"], "status": "approved"
+    })
+    if creator_deliverables >= max_per:
+        raise HTTPException(400, f"Has alcanzado el límite de {max_per} videos para esta campaña")
     
     u = await db.users.find_one({"_id": ObjectId(user["sub"])})
     app_doc = {
@@ -468,6 +538,9 @@ async def create_application(
         "message": message,
         "status": "pending",
         "created_at": now_iso(),
+        "updated_at": now_iso(),
+        "accepted_at": None,
+        "deadline": None,
     }
     result = await db.applications.insert_one(app_doc)
     app_doc["_id"] = result.inserted_id
@@ -505,8 +578,12 @@ async def accept_application(app_id: str, user=Depends(get_current_user)):
     elif user["role"] != "admin":
         raise HTTPException(403, "No autorizado")
     
-    await db.applications.update_one({"_id": ObjectId(app_id)}, {"$set": {"status": "accepted"}})
-    return {"message": "Aplicación aceptada"}
+    deadline = (datetime.now(timezone.utc) + timedelta(hours=24)).isoformat()
+    await db.applications.update_one(
+        {"_id": ObjectId(app_id)},
+        {"$set": {"status": "accepted", "accepted_at": now_iso(), "deadline": deadline, "updated_at": now_iso()}}
+    )
+    return {"message": "Aplicación aceptada", "deadline": deadline}
 
 @api.put("/applications/{app_id}/reject")
 async def reject_application(app_id: str, user=Depends(get_current_user)):
@@ -522,12 +599,26 @@ async def submit_deliverable(
     application_id: str = Form(...),
     video_url: str = Form(""),
     notes: str = Form(""),
+    platform_links: str = Form(""),  # JSON string of {platform: url}
+    platforms_count: int = Form(1),
     screenshot: Optional[UploadFile] = File(None),
     user=Depends(require_creator)
 ):
     a = await db.applications.find_one({"_id": ObjectId(application_id), "creator_id": user["sub"], "status": "accepted"})
     if not a:
         raise HTTPException(404, "Aplicación no encontrada o no aceptada")
+    
+    # Check 24h deadline
+    if a.get("deadline"):
+        deadline_dt = datetime.fromisoformat(a["deadline"])
+        if datetime.now(timezone.utc) > deadline_dt:
+            await db.applications.update_one({"_id": ObjectId(application_id)}, {"$set": {"status": "expired", "updated_at": now_iso()}})
+            raise HTTPException(400, "Se venció el plazo de 24 horas para subir el entregable")
+    
+    # Check no duplicate
+    existing_del = await db.deliverables.find_one({"application_id": application_id, "creator_id": user["sub"], "status": {"$ne": "rejected"}})
+    if existing_del:
+        raise HTTPException(400, "Ya enviaste un entregable para esta aplicación")
     
     screenshot_url = ""
     if screenshot:
@@ -539,12 +630,19 @@ async def submit_deliverable(
         "creator_id": user["sub"],
         "creator_name": a.get("creator_name", ""),
         "video_url": video_url,
+        "platform_links": platform_links,
+        "platforms_count": platforms_count,
         "screenshot_url": screenshot_url,
         "notes": notes,
         "status": "pending",
         "created_at": now_iso(),
         "reviewed_by": None,
         "reviewed_at": None,
+        "initial_payment_released": False,
+        "final_payment_released": False,
+        "bonus_claimed": False,
+        "permanence_start": None,
+        "permanence_end": None,
     }
     result = await db.deliverables.insert_one(deliverable)
     deliverable["_id"] = result.inserted_id
@@ -582,36 +680,64 @@ async def approve_deliverable(del_id: str, user=Depends(require_admin)):
     creator = await db.users.find_one({"_id": ObjectId(d["creator_id"])})
     commission_rate = 0.35 if creator and creator.get("is_top10") else 0.25
     commission = round(payment * commission_rate, 2)
-    payout = round(payment - commission, 2)
+    creator_total = round(payment - commission, 2)
+    
+    # 40% initial release, 60% held for permanence completion
+    initial_payout = round(creator_total * 0.40, 2)
+    held_payout = round(creator_total * 0.60, 2)
+    
+    # Calculate permanence end date
+    duration_map = {"1_week": 7, "1_month": 30, "6_months": 180}
+    days = duration_map.get(c.get("content_duration", "1_month"), 30)
+    perm_start = now_iso()
+    perm_end = (datetime.now(timezone.utc) + timedelta(days=days)).isoformat()
     
     # Update deliverable
     await db.deliverables.update_one(
         {"_id": ObjectId(del_id), "status": "pending"},
-        {"$set": {"status": "approved", "reviewed_by": user["sub"], "reviewed_at": now_iso(), "payout": payout, "commission": commission}}
+        {"$set": {
+            "status": "approved", "reviewed_by": user["sub"], "reviewed_at": now_iso(),
+            "payout": creator_total, "commission": commission,
+            "initial_payment_released": True, "initial_payout": initial_payout,
+            "held_payout": held_payout, "final_payment_released": False,
+            "bonus_claimed": False,
+            "permanence_start": perm_start, "permanence_end": perm_end,
+        }}
     )
-    # Pay creator
-    await db.users.update_one({"_id": ObjectId(d["creator_id"])}, {"$inc": {"balance": payout}})
+    # Pay creator initial 40%
+    await db.users.update_one({"_id": ObjectId(d["creator_id"])}, {"$inc": {"balance": initial_payout}})
     # Update campaign
     await db.campaigns.update_one(
         {"_id": ObjectId(d["campaign_id"])},
         {"$inc": {"budget_remaining": -payment, "videos_completed": 1}}
     )
-    # Transactions
+    
+    # Platform commission transaction
     await db.transactions.insert_one({
-        "user_id": d["creator_id"], "type": "campaign_payment", "amount": payout,
-        "reference_id": del_id, "description": f"Pago por campaña (comisión {int(commission_rate*100)}%: ${commission})", "created_at": now_iso(),
+        "user_id": d["creator_id"], "type": "campaign_payment_initial", "amount": initial_payout,
+        "reference_id": del_id, "description": f"Pago inicial 40% por campaña (comisión {int(commission_rate*100)}%)", "created_at": now_iso(),
     })
     await db.transactions.insert_one({
         "user_id": "__platform__", "type": "platform_commission", "amount": commission,
         "reference_id": del_id, "description": f"Comisión {int(commission_rate*100)}% del creador {d.get('creator_name','')}", "created_at": now_iso(),
     })
     
-    # Check if campaign is complete
+    # Referral commission (5% of platform commission)
+    if creator and creator.get("referred_by"):
+        referral_bonus = round(commission * 0.05, 4)
+        if referral_bonus > 0:
+            await db.users.update_one({"_id": ObjectId(creator["referred_by"])}, {"$inc": {"balance": referral_bonus}})
+            await db.transactions.insert_one({
+                "user_id": creator["referred_by"], "type": "referral_commission", "amount": referral_bonus,
+                "reference_id": del_id, "description": f"Comisión de referido (5%): {d.get('creator_name','')}", "created_at": now_iso(),
+            })
+    
+    # Check if campaign is complete or budget exhausted
     updated_c = await db.campaigns.find_one({"_id": ObjectId(d["campaign_id"])})
-    if updated_c["videos_completed"] >= updated_c["videos_requested"]:
+    if updated_c["videos_completed"] >= updated_c["videos_requested"] or updated_c["budget_remaining"] <= 0:
         await db.campaigns.update_one({"_id": ObjectId(d["campaign_id"])}, {"$set": {"status": "completed"}})
     
-    return {"message": "Entregable aprobado", "payout": payout, "commission": commission}
+    return {"message": "Entregable aprobado (40% liberado)", "initial_payout": initial_payout, "held_payout": held_payout, "permanence_end": perm_end}
 
 @api.put("/admin/deliverables/{del_id}/reject")
 async def reject_deliverable(del_id: str, note: str = "", user=Depends(require_admin)):
@@ -1018,6 +1144,10 @@ async def admin_stats(user=Depends(require_admin)):
     pending_financing = await db.music_financing.count_documents({"status": "pending"})
     pending_curator = await db.curator_requests.count_documents({"status": "pending"})
     pending_micro_tasks = await db.micro_tasks.count_documents({"status": "pending"})
+    pending_level_requests = await db.level_requests.count_documents({"status": "pending"})
+    
+    # Deliverables pending final release
+    pending_final_release = await db.deliverables.count_documents({"status": "approved", "final_payment_released": False})
     
     # Platform earnings
     platform_txns = await db.transactions.find({"user_id": "__platform__", "type": "platform_commission"}).to_list(10000)
@@ -1041,6 +1171,8 @@ async def admin_stats(user=Depends(require_admin)):
         "pending_financing": pending_financing,
         "pending_curator": pending_curator,
         "pending_micro_tasks": pending_micro_tasks,
+        "pending_level_requests": pending_level_requests,
+        "pending_final_release": pending_final_release,
         "total_commissions": round(total_commissions, 2),
         "total_deposited": round(total_deposited, 2),
         "active_campaigns": active_campaigns,
@@ -1297,6 +1429,179 @@ async def reject_micro_task(task_id: str, user=Depends(require_admin)):
         raise HTTPException(404, "Tarea no encontrada")
     return {"message": "Tarea rechazada"}
 
+
+# ===================== DELIVERABLE: RELEASE FINAL PAYMENT (60%) =====================
+@api.put("/admin/deliverables/{del_id}/release-final")
+async def release_final_payment(del_id: str, user=Depends(require_admin)):
+    d = await db.deliverables.find_one({"_id": ObjectId(del_id), "status": "approved", "final_payment_released": False})
+    if not d:
+        raise HTTPException(404, "Entregable no encontrado o pago ya liberado")
+    
+    held = d.get("held_payout", 0)
+    if held <= 0:
+        raise HTTPException(400, "No hay pago pendiente")
+    
+    await db.users.update_one({"_id": ObjectId(d["creator_id"])}, {"$inc": {"balance": held}})
+    await db.deliverables.update_one({"_id": ObjectId(del_id)}, {"$set": {"final_payment_released": True}})
+    await db.transactions.insert_one({
+        "user_id": d["creator_id"], "type": "campaign_payment_final", "amount": held,
+        "reference_id": del_id, "description": f"Pago final 60% - permanencia cumplida", "created_at": now_iso(),
+    })
+    return {"message": f"Pago final de ${held} liberado"}
+
+# ===================== DELIVERABLE: CLAIM BONUS =====================
+@api.put("/deliverables/{del_id}/claim-bonus")
+async def claim_bonus(del_id: str, user=Depends(get_current_user)):
+    d = await db.deliverables.find_one({"_id": ObjectId(del_id), "status": "approved", "bonus_claimed": False})
+    if not d:
+        raise HTTPException(404, "Entregable no encontrado o bonus ya reclamado")
+    if d["creator_id"] != user["sub"] and user["role"] != "admin":
+        raise HTTPException(403, "No autorizado")
+    
+    c = await db.campaigns.find_one({"_id": ObjectId(d["campaign_id"])})
+    bonus = c.get("bonus_amount", 0) if c else 0
+    if bonus <= 0:
+        raise HTTPException(400, "Esta campaña no tiene bonus")
+    
+    creator = await db.users.find_one({"_id": ObjectId(d["creator_id"])})
+    commission_rate = 0.35 if creator and creator.get("is_top10") else 0.25
+    bonus_commission = round(bonus * commission_rate, 2)
+    bonus_payout = round(bonus - bonus_commission, 2)
+    
+    await db.users.update_one({"_id": ObjectId(d["creator_id"])}, {"$inc": {"balance": bonus_payout}})
+    await db.deliverables.update_one({"_id": ObjectId(del_id)}, {"$set": {"bonus_claimed": True}})
+    await db.campaigns.update_one({"_id": ObjectId(d["campaign_id"])}, {"$inc": {"budget_remaining": -bonus}})
+    await db.transactions.insert_one({
+        "user_id": d["creator_id"], "type": "bonus_payment", "amount": bonus_payout,
+        "reference_id": del_id, "description": f"Bonus reclamado (comisión {int(commission_rate*100)}%)", "created_at": now_iso(),
+    })
+    await db.transactions.insert_one({
+        "user_id": "__platform__", "type": "platform_commission", "amount": bonus_commission,
+        "reference_id": del_id, "description": f"Comisión bonus {int(commission_rate*100)}%", "created_at": now_iso(),
+    })
+    return {"message": f"Bonus de ${bonus_payout} reclamado"}
+
+# ===================== LEVEL UP REQUEST =====================
+@api.post("/creator/level-request")
+async def request_level_up(
+    requested_level: str = Form(...),
+    justification: str = Form(""),
+    portfolio_links: str = Form(""),
+    user=Depends(require_creator)
+):
+    u = await db.users.find_one({"_id": ObjectId(user["sub"])})
+    if u.get("level_request_pending"):
+        raise HTTPException(400, "Ya tienes una solicitud de nivel pendiente")
+    
+    req_doc = {
+        "user_id": user["sub"],
+        "user_email": user["email"],
+        "user_name": u.get("name", ""),
+        "current_level": u.get("creator_profile", {}).get("creator_level", "standard") if u.get("creator_profile") else "standard",
+        "requested_level": requested_level,
+        "justification": justification,
+        "portfolio_links": portfolio_links,
+        "status": "pending",
+        "created_at": now_iso(),
+    }
+    await db.level_requests.insert_one(req_doc)
+    await db.users.update_one({"_id": ObjectId(user["sub"])}, {"$set": {"level_request_pending": True}})
+    return {"message": "Solicitud de nivel enviada"}
+
+@api.get("/creator/level-requests")
+async def list_level_requests(user=Depends(get_current_user)):
+    query = {} if user["role"] == "admin" else {"user_id": user["sub"]}
+    reqs = await db.level_requests.find(query).sort("created_at", -1).to_list(500)
+    return [serialize_doc(r) for r in reqs]
+
+@api.put("/admin/level-requests/{req_id}/approve")
+async def approve_level_request(req_id: str, user=Depends(require_admin)):
+    r = await db.level_requests.find_one({"_id": ObjectId(req_id), "status": "pending"})
+    if not r:
+        raise HTTPException(404, "Solicitud no encontrada")
+    await db.level_requests.update_one({"_id": ObjectId(req_id)}, {"$set": {"status": "approved"}})
+    await db.users.update_one(
+        {"_id": ObjectId(r["user_id"])},
+        {"$set": {"level_request_pending": False, "creator_profile.creator_level": r["requested_level"]}}
+    )
+    return {"message": f"Nivel actualizado a {r['requested_level']}"}
+
+@api.put("/admin/level-requests/{req_id}/reject")
+async def reject_level_request(req_id: str, user=Depends(require_admin)):
+    r = await db.level_requests.find_one({"_id": ObjectId(req_id), "status": "pending"})
+    if not r:
+        raise HTTPException(404, "Solicitud no encontrada")
+    await db.level_requests.update_one({"_id": ObjectId(req_id)}, {"$set": {"status": "rejected"}})
+    await db.users.update_one({"_id": ObjectId(r["user_id"])}, {"$set": {"level_request_pending": False}})
+    return {"message": "Solicitud rechazada"}
+
+# ===================== PROFILE PHOTO =====================
+@api.post("/auth/profile-photo")
+async def upload_profile_photo(
+    photo: UploadFile = File(...),
+    user=Depends(get_current_user)
+):
+    photo_url = await save_upload(photo)
+    await db.users.update_one({"_id": ObjectId(user["sub"])}, {"$set": {"profile_photo_url": photo_url}})
+    return {"message": "Foto actualizada", "url": photo_url}
+
+# ===================== REFERRAL INFO =====================
+@api.get("/referrals")
+async def get_referral_info(user=Depends(get_current_user)):
+    u = await db.users.find_one({"_id": ObjectId(user["sub"])})
+    referral_code = u.get("referral_code", "")
+    # Count referrals
+    referrals = await db.users.find({"referred_by": user["sub"]}).to_list(500)
+    # Referral earnings
+    ref_txns = await db.transactions.find({"user_id": user["sub"], "type": "referral_commission"}).to_list(1000)
+    total_ref_earnings = sum(t["amount"] for t in ref_txns)
+    return {
+        "referral_code": referral_code,
+        "referrals_count": len(referrals),
+        "referrals": [{"name": r.get("name", ""), "email": r.get("email", ""), "created_at": r.get("created_at", "")} for r in referrals],
+        "total_referral_earnings": round(total_ref_earnings, 4),
+    }
+
+# ===================== ADMIN: WALLET (Platform Commissions) =====================
+@api.get("/admin/wallet")
+async def admin_wallet(user=Depends(require_admin)):
+    txns = await db.transactions.find({"user_id": "__platform__"}).sort("created_at", -1).to_list(5000)
+    total = sum(t["amount"] for t in txns)
+    return {"total_commissions": round(total, 2), "transactions": [serialize_doc(t) for t in txns]}
+
+# ===================== ADMIN: CUSTOM RANKING BOARDS =====================
+@api.post("/admin/ranking-boards")
+async def create_ranking_board(
+    name: str = Form(...),
+    description: str = Form(""),
+    user=Depends(require_admin)
+):
+    board = {"name": name, "description": description, "entries": [], "created_at": now_iso()}
+    result = await db.ranking_boards.insert_one(board)
+    return {"message": "Tablero creado", "id": str(result.inserted_id)}
+
+@api.get("/ranking-boards")
+async def list_ranking_boards():
+    boards = await db.ranking_boards.find({}).sort("created_at", -1).to_list(100)
+    return [serialize_doc(b) for b in boards]
+
+@api.put("/admin/ranking-boards/{board_id}/add-creator")
+async def add_creator_to_board(board_id: str, creator_id: str = Form(...), user=Depends(require_admin)):
+    creator = await db.users.find_one({"_id": ObjectId(creator_id)})
+    if not creator:
+        raise HTTPException(404, "Creador no encontrado")
+    entry = {"user_id": creator_id, "name": creator.get("name", ""), "added_at": now_iso()}
+    await db.ranking_boards.update_one({"_id": ObjectId(board_id)}, {"$push": {"entries": entry}})
+    return {"message": "Creador agregado al tablero"}
+
+# ===================== ADMIN: SET CREATOR LEVEL =====================
+@api.put("/admin/users/{user_id}/level")
+async def admin_set_level(user_id: str, level: str = Form(...), user=Depends(require_admin)):
+    await db.users.update_one(
+        {"_id": ObjectId(user_id)},
+        {"$set": {"creator_profile.creator_level": level}}
+    )
+    return {"message": f"Nivel actualizado a {level}"}
 
 # ===================== STATIC FILES =====================
 app.mount("/api/uploads", StaticFiles(directory=str(UPLOAD_DIR)), name="uploads")
