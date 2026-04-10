@@ -1,34 +1,49 @@
-.App-logo {
-    height: 40vmin;
-    pointer-events: none;
+/* Family Fans Mony - Global Styles */
+
+.status-badge-pending {
+  @apply bg-[hsl(43_96%_56%/0.15)] text-[hsl(43,96%,56%)] border border-[hsl(43_96%_56%/0.3)] px-2.5 py-0.5 rounded-full text-xs font-medium;
+}
+.status-badge-approved {
+  @apply bg-[hsl(152_58%_44%/0.15)] text-[hsl(152,58%,44%)] border border-[hsl(152_58%_44%/0.3)] px-2.5 py-0.5 rounded-full text-xs font-medium;
+}
+.status-badge-rejected {
+  @apply bg-[hsl(0_72%_52%/0.15)] text-[hsl(0,72%,52%)] border border-[hsl(0_72%_52%/0.3)] px-2.5 py-0.5 rounded-full text-xs font-medium;
+}
+.status-badge-active {
+  @apply bg-[hsl(199_78%_48%/0.15)] text-[hsl(199,78%,48%)] border border-[hsl(199_78%_48%/0.3)] px-2.5 py-0.5 rounded-full text-xs font-medium;
 }
 
-@media (prefers-reduced-motion: no-preference) {
-    .App-logo {
-        animation: App-logo-spin infinite 20s linear;
-    }
+.kpi-card {
+  @apply rounded-xl border bg-card p-5 hover:border-border/80;
+  box-shadow: 0 10px 30px hsl(var(--shadow-elev-1));
 }
 
-.App-header {
-    background-color: #0f0f10;
-    min-height: 100vh;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    font-size: calc(10px + 2vmin);
-    color: white;
+.sidebar-link {
+  @apply flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-muted-foreground transition-colors;
+}
+.sidebar-link:hover {
+  @apply bg-secondary text-foreground;
+}
+.sidebar-link.active {
+  @apply bg-secondary text-primary border-l-2 border-primary;
 }
 
-.App-link {
-    color: #61dafb;
+.page-container {
+  @apply mx-auto w-full max-w-7xl px-4 sm:px-6 lg:px-8 py-6 sm:py-8;
 }
 
-@keyframes App-logo-spin {
-    from {
-        transform: rotate(0deg);
-    }
-    to {
-        transform: rotate(360deg);
-    }
+.card-hover {
+  @apply hover:border-border hover:shadow-[0_16px_40px_hsl(var(--shadow-elev-2))];
+  transition: box-shadow 0.2s, border-color 0.2s;
+}
+
+button {
+  transition: background-color 0.15s, color 0.15s, opacity 0.15s;
+}
+button:active {
+  transform: scale(0.98);
+}
+
+input, textarea, select {
+  transition: border-color 0.15s, box-shadow 0.15s;
 }

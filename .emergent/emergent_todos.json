@@ -5,19 +5,19 @@
   },
   {
     "content": "Phase 2: Design Guidelines",
-    "status": "in_progress"
+    "status": "completed"
   },
   {
     "content": "Phase 2: Backend - Auth, Roles, Models, All Endpoints",
-    "status": "pending"
+    "status": "completed"
   },
   {
     "content": "Phase 2: Frontend - Complete UI (all roles)",
-    "status": "pending"
+    "status": "completed"
   },
   {
     "content": "Phase 2: E2E Testing",
-    "status": "pending"
+    "status": "in_progress"
   },
   {
     "content": "Phase 3: Advanced Features (Levels, Financing, Curators, Micro-tasks, Rankings)",
