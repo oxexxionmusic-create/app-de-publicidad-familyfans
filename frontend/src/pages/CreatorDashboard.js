@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@/App';
 import { Link, useNavigate } from 'react-router-dom';
-import { authAPI, campaignsAPI, applicationsAPI, deliverablesAPI, transactionsAPI, withdrawalsAPI, kycAPI, subscriptionsAPI, premiumContentAPI, musicFinancingAPI } from '@/lib/api';
+import { authAPI, campaignsAPI, applicationsAPI, deliverablesAPI, transactionsAPI, withdrawalsAPI, kycAPI, subscriptionsAPI, premiumContentAPI, musicFinancingAPI, curatorAPI } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -68,6 +68,15 @@ export default function CreatorDashboard() {
   const [finForm, setFinForm] = useState({ title: '', description: '', amount_requested: '', genre: '', streaming_stats: '' });
   const [finAudio, setFinAudio] = useState(null);
 
+  // Curator
+  const [showPlaylist, setShowPlaylist] = useState(false);
+  const [playlistForm, setPlaylistForm] = useState({ playlist_url: '', playlist_name: '', song_count: 10, followers: 0 });
+  const [playlists, setPlaylists] = useState([]);
+  const [showCuratorPay, setShowCuratorPay] = useState(false);
+  const [curatorPayForm, setCuratorPayForm] = useState({ playlist_id: '', listens_count: 0, evidence_description: '' });
+  const [curatorEvidence, setCuratorEvidence] = useState(null);
+  const [curatorRequests, setCuratorRequests] = useState([]);
+
   const load = useCallback(async () => {
     setLoading(true);
     try {
@@ -77,6 +86,11 @@ export default function CreatorDashboard() {
       ]);
       setCampaigns(camp.data); setApplications(app.data); setDeliverables(del.data);
       setTransactions(txn.data); setWithdrawals(wd.data); setSubscriptions(sub.data);
+      // Load curator data
+      try {
+        const [pl, cr] = await Promise.all([curatorAPI.playlists(), curatorAPI.requests()]);
+        setPlaylists(pl.data); setCuratorRequests(cr.data);
+      } catch {}
       await refreshUser();
     } catch {}
     setLoading(false);
@@ -207,6 +221,36 @@ export default function CreatorDashboard() {
     } catch (err) { toast.error(err.response?.data?.detail || 'Error'); }
   };
 
+  const handleRegisterPlaylist = async (e) => {
+    e.preventDefault();
+    try {
+      const fd = new FormData();
+      fd.append('playlist_url', playlistForm.playlist_url);
+      fd.append('playlist_name', playlistForm.playlist_name);
+      fd.append('song_count', playlistForm.song_count);
+      fd.append('followers', playlistForm.followers);
+      await curatorAPI.registerPlaylist(fd);
+      toast.success('Playlist registrada');
+      setShowPlaylist(false);
+      load();
+    } catch (err) { toast.error(err.response?.data?.detail || 'Error'); }
+  };
+
+  const handleCuratorPayment = async (e) => {
+    e.preventDefault();
+    try {
+      const fd = new FormData();
+      fd.append('playlist_id', curatorPayForm.playlist_id);
+      fd.append('listens_count', curatorPayForm.listens_count);
+      fd.append('evidence_description', curatorPayForm.evidence_description);
+      if (curatorEvidence) fd.append('evidence', curatorEvidence);
+      await curatorAPI.requestPayment(fd);
+      toast.success('Solicitud de pago enviada');
+      setShowCuratorPay(false);
+      load();
+    } catch (err) { toast.error(err.response?.data?.detail || 'Error'); }
+  };
+
   const acceptedApps = applications.filter(a => a.status === 'accepted');
   const totalEarnings = transactions.filter(t => t.amount > 0).reduce((sum, t) => sum + t.amount, 0);
 
@@ -241,6 +285,7 @@ export default function CreatorDashboard() {
             <TabsTrigger value="applications">Mis Aplicaciones</TabsTrigger>
             <TabsTrigger value="earnings">Ganancias</TabsTrigger>
             <TabsTrigger value="premium">Premium</TabsTrigger>
+            <TabsTrigger value="curator">Curador</TabsTrigger>
             <TabsTrigger value="profile">Perfil</TabsTrigger>
           </TabsList>
 
@@ -361,6 +406,57 @@ export default function CreatorDashboard() {
               </Card>
             ) : (
               <Card className="border-border/50 mb-4"><CardContent className="p-8 text-center"><Crown className="w-8 h-8 text-muted-foreground mx-auto mb-2" /><p className="text-sm text-muted-foreground">Configura tu plan premium para empezar a recibir suscriptores</p></CardContent></Card>
+            )}
+          </TabsContent>
+
+          <TabsContent value="curator">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-xl font-semibold" style={{fontFamily:'Space Grotesk'}}>Curador de Spotify</h2>
+              <div className="flex gap-2">
+                <Button onClick={() => setShowPlaylist(true)} variant="outline"><Plus className="w-4 h-4 mr-1" /> Registrar Playlist</Button>
+                {playlists.length > 0 && <Button onClick={() => setShowCuratorPay(true)}><DollarSign className="w-4 h-4 mr-1" /> Solicitar Pago</Button>}
+              </div>
+            </div>
+            <div className="p-3 rounded-lg bg-[hsl(var(--surface-2))] text-xs text-muted-foreground mb-4 space-y-1">
+              <p className="font-medium text-foreground text-sm">Tarifas de Pago:</p>
+              <p>10 canciones, 1000 escuchas: <b>$9.00</b></p>
+              <p>25 canciones, 1000 escuchas: <b>$22.00</b></p>
+              <p>10 canciones, 500 escuchas: <b>$4.00</b></p>
+              <p>5 canciones, 500 escuchas: <b>$2.00</b></p>
+              <p>10 canciones, 100 escuchas: <b>$0.30</b></p>
+            </div>
+            {playlists.length > 0 && (
+              <div className="space-y-2 mb-4">
+                <p className="text-sm font-medium">Mis Playlists</p>
+                {playlists.map(p => (
+                  <Card key={p.id} className="border-border/50">
+                    <CardContent className="p-3 flex items-center justify-between">
+                      <div>
+                        <p className="text-sm font-medium">{p.playlist_name || 'Playlist'}</p>
+                        <p className="text-xs text-muted-foreground">{p.song_count} canciones · {p.followers} seguidores</p>
+                        <a href={p.playlist_url} target="_blank" rel="noopener noreferrer" className="text-xs text-primary hover:underline">Ver en Spotify</a>
+                      </div>
+                      <StatusBadge status={p.status} />
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            )}
+            {curatorRequests.length > 0 && (
+              <div className="space-y-2">
+                <p className="text-sm font-medium">Solicitudes de Pago</p>
+                {curatorRequests.map(r => (
+                  <Card key={r.id} className="border-border/50">
+                    <CardContent className="p-3 flex items-center justify-between">
+                      <div>
+                        <p className="text-sm">{r.playlist_name} · {r.listens_count} escuchas</p>
+                        <p className="text-xs text-muted-foreground">{new Date(r.created_at).toLocaleDateString('es-ES')} · Pago: ${r.calculated_payout}</p>
+                      </div>
+                      <StatusBadge status={r.status} />
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
             )}
           </TabsContent>
 
@@ -530,6 +626,44 @@ export default function CreatorDashboard() {
             <div><Label>Estadisticas de Streaming</Label><Textarea value={finForm.streaming_stats} onChange={e => setFinForm({...finForm, streaming_stats: e.target.value})} placeholder="Oyentes mensuales, seguidores..." /></div>
             <div><Label>Audio/Demo (opcional)</Label><Input type="file" accept="audio/*" onChange={e => setFinAudio(e.target.files[0])} /></div>
             <Button type="submit" className="w-full">Enviar Solicitud</Button>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Register Playlist */}
+      <Dialog open={showPlaylist} onOpenChange={setShowPlaylist}>
+        <DialogContent>
+          <DialogHeader><DialogTitle style={{fontFamily:'Space Grotesk'}}>Registrar Playlist de Spotify</DialogTitle></DialogHeader>
+          <form onSubmit={handleRegisterPlaylist} className="space-y-4">
+            <div><Label>URL de la Playlist *</Label><Input value={playlistForm.playlist_url} onChange={e => setPlaylistForm({...playlistForm, playlist_url: e.target.value})} placeholder="https://open.spotify.com/playlist/..." required /></div>
+            <div><Label>Nombre de la Playlist</Label><Input value={playlistForm.playlist_name} onChange={e => setPlaylistForm({...playlistForm, playlist_name: e.target.value})} /></div>
+            <div className="grid grid-cols-2 gap-4">
+              <div><Label>Numero de Canciones (5-25)</Label><Input type="number" min="5" max="25" value={playlistForm.song_count} onChange={e => setPlaylistForm({...playlistForm, song_count: parseInt(e.target.value)||5})} /></div>
+              <div><Label>Seguidores/Me gusta (min 10)</Label><Input type="number" min="10" value={playlistForm.followers} onChange={e => setPlaylistForm({...playlistForm, followers: parseInt(e.target.value)||0})} /></div>
+            </div>
+            <Button type="submit" className="w-full">Registrar Playlist</Button>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Curator Payment Request */}
+      <Dialog open={showCuratorPay} onOpenChange={setShowCuratorPay}>
+        <DialogContent>
+          <DialogHeader><DialogTitle style={{fontFamily:'Space Grotesk'}}>Solicitar Pago de Curador</DialogTitle></DialogHeader>
+          <form onSubmit={handleCuratorPayment} className="space-y-4">
+            <div>
+              <Label>Playlist</Label>
+              <Select value={curatorPayForm.playlist_id} onValueChange={v => setCuratorPayForm({...curatorPayForm, playlist_id: v})}>
+                <SelectTrigger><SelectValue placeholder="Selecciona una playlist" /></SelectTrigger>
+                <SelectContent>
+                  {playlists.map(p => <SelectItem key={p.id} value={p.id}>{p.playlist_name || 'Playlist'} ({p.song_count} canciones)</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <div><Label>Numero de Escuchas Completas</Label><Input type="number" min="100" value={curatorPayForm.listens_count} onChange={e => setCuratorPayForm({...curatorPayForm, listens_count: parseInt(e.target.value)||0})} /></div>
+            <div><Label>Descripcion de Evidencia</Label><Textarea value={curatorPayForm.evidence_description} onChange={e => setCuratorPayForm({...curatorPayForm, evidence_description: e.target.value})} placeholder="Describe las pruebas de escucha..." /></div>
+            <div><Label>Captura de Evidencia</Label><Input type="file" accept="image/*" onChange={e => setCuratorEvidence(e.target.files[0])} /></div>
+            <Button type="submit" className="w-full">Solicitar Pago</Button>
           </form>
         </DialogContent>
       </Dialog>

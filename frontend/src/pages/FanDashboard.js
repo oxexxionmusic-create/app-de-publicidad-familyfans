@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@/App';
 import { Link, useNavigate } from 'react-router-dom';
-import { exploreAPI, subscriptionsAPI, transactionsAPI, depositsAPI, paymentInfoAPI } from '@/lib/api';
+import { exploreAPI, subscriptionsAPI, transactionsAPI, depositsAPI, paymentInfoAPI, microTasksAPI } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { toast } from 'sonner';
-import { Search, Users, Eye, Crown, Heart, Wallet, Plus, LogOut, Zap, MapPin, DollarSign } from 'lucide-react';
+import { Search, Users, Eye, Crown, Heart, Wallet, Plus, LogOut, Zap, MapPin, DollarSign, Music, Upload } from 'lucide-react';
 
 export default function FanDashboard() {
   const { user, logout, refreshUser } = useAuth();
@@ -31,6 +31,13 @@ export default function FanDashboard() {
   const [depLoading, setDepLoading] = useState(false);
   const [paymentInfo, setPaymentInfo] = useState({});
 
+  // Micro Tasks
+  const [showMicroTask, setShowMicroTask] = useState(false);
+  const [microTasks, setMicroTasks] = useState([]);
+  const [mtComment, setMtComment] = useState('');
+  const [mtEvidence, setMtEvidence] = useState(null);
+  const [mtLoading, setMtLoading] = useState(false);
+
   const load = useCallback(async () => {
     setLoading(true);
     try {
@@ -38,6 +45,7 @@ export default function FanDashboard() {
         exploreAPI.creators(), subscriptionsAPI.list(), transactionsAPI.list(), paymentInfoAPI.get()
       ]);
       setCreators(cr.data); setSubscriptions(sub.data); setTransactions(txn.data); setPaymentInfo(pi.data);
+      try { const mt = await microTasksAPI.list(); setMicroTasks(mt.data); } catch {}
       await refreshUser();
     } catch {}
     setLoading(false);
@@ -67,6 +75,24 @@ export default function FanDashboard() {
     setDepLoading(false);
   };
 
+  const handleMicroTask = async (e) => {
+    e.preventDefault();
+    setMtLoading(true);
+    try {
+      const fd = new FormData();
+      fd.append('songs_listened', 5);
+      fd.append('comment', mtComment);
+      if (mtEvidence) fd.append('evidence', mtEvidence);
+      await microTasksAPI.submit(fd);
+      toast.success('Tarea enviada. Ganaras $0.02 al ser aprobada.');
+      setShowMicroTask(false);
+      setMtComment('');
+      setMtEvidence(null);
+      load();
+    } catch (err) { toast.error(err.response?.data?.detail || 'Error'); }
+    setMtLoading(false);
+  };
+
   return (
     <div className="min-h-screen bg-background">
       <nav className="border-b border-border/50 bg-[hsl(var(--surface-1))] sticky top-0 z-50">
@@ -94,6 +120,7 @@ export default function FanDashboard() {
           <TabsList className="mb-6">
             <TabsTrigger value="explore">Explorar</TabsTrigger>
             <TabsTrigger value="subscriptions">Mis Suscripciones</TabsTrigger>
+            <TabsTrigger value="music">Escuchar y Ganar</TabsTrigger>
             <TabsTrigger value="transactions">Transacciones</TabsTrigger>
           </TabsList>
 
@@ -178,6 +205,44 @@ export default function FanDashboard() {
             )}
           </TabsContent>
 
+          <TabsContent value="music">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-xl font-semibold" style={{fontFamily:'Space Grotesk'}}>Escuchar Musica y Ganar</h2>
+              <Button onClick={() => setShowMicroTask(true)}><Music className="w-4 h-4 mr-1" /> Enviar Tarea</Button>
+            </div>
+            <Card className="border-border/50 mb-4">
+              <CardContent className="p-4">
+                <div className="flex items-start gap-3">
+                  <Music className="w-8 h-8 text-primary mt-1" />
+                  <div>
+                    <p className="font-medium">Como funciona</p>
+                    <p className="text-sm text-muted-foreground">1. Escucha 5 canciones completas</p>
+                    <p className="text-sm text-muted-foreground">2. Deja un comentario sobre las canciones</p>
+                    <p className="text-sm text-muted-foreground">3. Sube una captura como evidencia</p>
+                    <p className="text-sm text-muted-foreground">4. Gana <b className="text-primary">$0.02</b> por cada bloque de 5 canciones</p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+            {microTasks.length > 0 && (
+              <div className="space-y-2">
+                <p className="text-sm font-medium">Mis Tareas</p>
+                {microTasks.map(t => (
+                  <Card key={t.id} className="border-border/50">
+                    <CardContent className="p-3 flex items-center justify-between">
+                      <div>
+                        <p className="text-sm">{t.songs_listened} canciones · ${t.calculated_payout}</p>
+                        <p className="text-xs text-muted-foreground">{new Date(t.created_at).toLocaleDateString('es-ES')}</p>
+                        {t.comment && <p className="text-xs text-muted-foreground mt-1">{t.comment}</p>}
+                      </div>
+                      <span className={t.status === 'approved' ? 'status-badge-approved' : t.status === 'rejected' ? 'status-badge-rejected' : 'status-badge-pending'}>{t.status === 'approved' ? 'Aprobado' : t.status === 'rejected' ? 'Rechazado' : 'Pendiente'}</span>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            )}
+          </TabsContent>
+
           <TabsContent value="transactions">
             <h2 className="text-xl font-semibold mb-4" style={{fontFamily:'Space Grotesk'}}>Transacciones</h2>
             {transactions.length === 0 ? (
@@ -195,6 +260,21 @@ export default function FanDashboard() {
           </TabsContent>
         </Tabs>
       </div>
+
+      {/* Micro Task Dialog */}
+      <Dialog open={showMicroTask} onOpenChange={setShowMicroTask}>
+        <DialogContent>
+          <DialogHeader><DialogTitle style={{fontFamily:'Space Grotesk'}}>Enviar Tarea de Escucha</DialogTitle></DialogHeader>
+          <form onSubmit={handleMicroTask} className="space-y-4">
+            <div className="p-3 rounded-lg bg-primary/5 border border-primary/20 text-sm">
+              <p>Escucha 5 canciones completas y gana <b className="text-primary">$0.02</b></p>
+            </div>
+            <div><Label>Tu Comentario sobre las Canciones *</Label><Textarea value={mtComment} onChange={e => setMtComment(e.target.value)} placeholder="Describe que te parecieron las canciones..." required /></div>
+            <div><Label>Evidencia (captura de pantalla)</Label><Input type="file" accept="image/*" onChange={e => setMtEvidence(e.target.files[0])} /></div>
+            <Button type="submit" className="w-full" disabled={mtLoading}>{mtLoading ? 'Enviando...' : 'Enviar Tarea'}</Button>
+          </form>
+        </DialogContent>
+      </Dialog>
 
       {/* Deposit Dialog */}
       <Dialog open={showDeposit} onOpenChange={setShowDeposit}>

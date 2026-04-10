@@ -85,10 +85,10 @@ class FamilyFansMoneyAPITester:
         return False
 
     def test_user_registration(self):
-        """Test user registration for different roles"""
-        print("\n👥 Testing User Registration...")
+        """Test user registration for different roles or login if already exists"""
+        print("\n👥 Testing User Registration/Login...")
         
-        # Test advertiser registration
+        # Test advertiser registration/login
         success, response = self.run_test(
             "Register Advertiser",
             "POST",
@@ -101,38 +101,65 @@ class FamilyFansMoneyAPITester:
                 "role": "advertiser"
             }
         )
+        if not success:
+            # Try login instead
+            success, response = self.run_test(
+                "Login Advertiser",
+                "POST",
+                "auth/login",
+                200,
+                data={"email": "anunciante@test.com", "password": "test123456"}
+            )
         if success and 'token' in response:
             self.advertiser_token = response['token']
         
-        # Test creator registration
+        # Test creator registration/login
         success, response = self.run_test(
             "Register Creator",
             "POST",
             "auth/register",
             200,
             data={
-                "email": "creador@test.com",
+                "email": "creador3@test.com",
                 "password": "test123456",
-                "name": "Test Creator",
+                "name": "Test Creator 3",
                 "role": "creator"
             }
         )
+        if not success:
+            # Try login instead
+            success, response = self.run_test(
+                "Login Creator",
+                "POST",
+                "auth/login",
+                200,
+                data={"email": "creador3@test.com", "password": "test123456"}
+            )
         if success and 'token' in response:
             self.creator_token = response['token']
         
-        # Test fan registration
+        # Test fan registration/login
         success, response = self.run_test(
             "Register Fan",
             "POST",
             "auth/register",
             200,
             data={
-                "email": "fan@test.com",
+                "email": "fan3@test.com",
                 "password": "test123456",
-                "name": "Test Fan",
+                "name": "Test Fan 3",
                 "role": "fan"
             }
         )
+        if not success:
+            # Try login instead
+            success, response = self.run_test(
+                "Login Fan",
+                "POST",
+                "auth/login",
+                200,
+                data={"email": "fan3@test.com", "password": "test123456"}
+            )
         if success and 'token' in response:
             self.fan_token = response['token']
 
@@ -204,6 +231,66 @@ class FamilyFansMoneyAPITester:
         if self.admin_token:
             self.run_test("List Deposits (Admin)", "GET", "deposits", 200, token=self.admin_token)
 
+    def test_curator_endpoints(self):
+        """Test Spotify curator endpoints (Phase 3)"""
+        print("\n🎵 Testing Curator Endpoints...")
+        
+        if not self.creator_token:
+            print("❌ No creator token available, skipping curator tests")
+            return
+        
+        # Test curator playlists listing
+        self.run_test("List Curator Playlists", "GET", "curator/playlists", 200, token=self.creator_token)
+        
+        # Test curator requests listing
+        self.run_test("List Curator Requests", "GET", "curator/requests", 200, token=self.creator_token)
+        
+        # Test admin curator requests (if admin token available)
+        if self.admin_token:
+            self.run_test("Admin List Curator Requests", "GET", "curator/requests", 200, token=self.admin_token)
+
+    def test_micro_tasks_endpoints(self):
+        """Test micro-tasks endpoints (Phase 3)"""
+        print("\n🎧 Testing Micro-Tasks Endpoints...")
+        
+        if not self.fan_token:
+            print("❌ No fan token available, skipping micro-tasks tests")
+            return
+        
+        # Test micro-tasks listing
+        self.run_test("List Micro Tasks", "GET", "micro-tasks", 200, token=self.fan_token)
+        
+        # Test admin micro-tasks listing
+        if self.admin_token:
+            self.run_test("Admin List Micro Tasks", "GET", "micro-tasks", 200, token=self.admin_token)
+
+    def test_admin_stats_phase3(self):
+        """Test admin stats includes Phase 3 fields"""
+        print("\n📊 Testing Admin Stats Phase 3 Fields...")
+        
+        if not self.admin_token:
+            print("❌ No admin token available, skipping admin stats test")
+            return
+        
+        success, response = self.run_test("Admin Stats with Phase 3", "GET", "admin/stats", 200, token=self.admin_token)
+        
+        if success:
+            # Check for Phase 3 specific fields
+            required_fields = ['pending_curator', 'pending_micro_tasks']
+            missing_fields = []
+            
+            for field in required_fields:
+                if field not in response:
+                    missing_fields.append(field)
+            
+            if missing_fields:
+                print(f"❌ Missing Phase 3 fields in admin stats: {missing_fields}")
+                self.failed_tests.append(f"Admin Stats missing Phase 3 fields: {missing_fields}")
+            else:
+                print(f"✅ All Phase 3 fields present in admin stats")
+                print(f"   pending_curator: {response.get('pending_curator', 0)}")
+                print(f"   pending_micro_tasks: {response.get('pending_micro_tasks', 0)}")
+
     def test_unauthorized_access(self):
         """Test that protected endpoints reject unauthorized access"""
         print("\n🚫 Testing Unauthorized Access...")
@@ -243,6 +330,9 @@ def main():
     tester.test_public_endpoints()
     tester.test_campaign_flow()
     tester.test_deposit_flow()
+    tester.test_curator_endpoints()
+    tester.test_micro_tasks_endpoints()
+    tester.test_admin_stats_phase3()
     tester.test_unauthorized_access()
     
     # Print summary

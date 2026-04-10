@@ -140,3 +140,21 @@ export const paymentInfoAPI = {
 export const rankingsAPI = {
   get: () => api.get('/rankings'),
 };
+
+// Curator
+export const curatorAPI = {
+  registerPlaylist: (formData) => api.post('/curator/playlist', formData, { headers: { 'Content-Type': 'multipart/form-data' } }),
+  playlists: () => api.get('/curator/playlists'),
+  requestPayment: (formData) => api.post('/curator/payment-request', formData, { headers: { 'Content-Type': 'multipart/form-data' } }),
+  requests: () => api.get('/curator/requests'),
+  approveRequest: (id) => api.put(`/admin/curator/requests/${id}/approve`),
+  rejectRequest: (id, note) => api.put(`/admin/curator/requests/${id}/reject?note=${encodeURIComponent(note || '')}`),
+};
+
+// Micro Tasks
+export const microTasksAPI = {
+  submit: (formData) => api.post('/micro-tasks', formData, { headers: { 'Content-Type': 'multipart/form-data' } }),
+  list: () => api.get('/micro-tasks'),
+  approve: (id) => api.put(`/admin/micro-tasks/${id}/approve`),
+  reject: (id) => api.put(`/admin/micro-tasks/${id}/reject`),
+};

@@ -1,16 +1,25 @@
-# plan.md — Family Fans Mony
+# plan.md — Family Fans Mony (Actualizado)
 
 ## 1) Objectives
-- Entregar un MVP full-stack (React + shadcn/ui, FastAPI, MongoDB) 100% en español.
+- Entregar una plataforma full-stack (React + shadcn/ui, FastAPI, MongoDB) 100% en español, con **operación manual-first** (admin valida pagos y evidencias).
 - Core operativo: **saldo interno + depósitos manuales (cripto/banco) verificados por admin + campañas (anunciante→creador) + liberación de pagos con comisión**.
 - Panel Admin como “centro de control” (verificaciones, aprobaciones, cancelaciones, settings de wallet/datos bancarios).
-- Flujos secundarios V1: suscripciones premium, retiros con KYC, rankings básicos, curadores Spotify y micro-tareas (versión simplificada).
-- Mantener el alcance alineado a 30 créditos (MVP, sin WhatsApp, sin directos/pujas).
+- Flujos V1 incluidos: **suscripciones premium**, **retiros con KYC**, **rankings básicos**, **financiamiento musical**.
+- Restricciones confirmadas: **sin WhatsApp**, **sin directos/pujas de mensajes dorados**, pagos **sin API externa** (comprobantes + aprobación admin).
+- Preparar el proyecto para despliegue estable en Render (guía creada) y remover branding de Emergent.
+
+**Estado actual:**
+- ✅ Phase 1 (POC) completada y validada.
+- ✅ Phase 2 (MVP) completada, UI+API listas, testing realizado y bugs corregidos.
+- ⏳ En progreso: guía de despliegue en Render (ya creada) y remoción de branding Emergent.
+- ⏳ Próximo: Phase 3 (Spotify curators, micro-tareas, rankings mejorados) + testing.
+
+---
 
 ## 2) Implementation Steps (Phases)
 
-### Phase 1 — Core POC (Aislado) **NECESARIO**
-**Core a probar**: ledger/saldo interno + depósito manual (cripto/banco) + verificación admin + crear campaña + asignar/aceptar + entrega evidencia + aprobación admin + pago al creador con comisión.
+### Phase 1 — Core POC (Aislado) **COMPLETADA**
+**Core probado**: ledger/saldo interno + depósito manual (cripto/banco) + verificación admin + crear campaña + postulación/aceptación + entrega evidencia + aprobación admin + pago al creador con comisión.
 
 User stories (POC)
 1. Como anunciante, quiero subir un comprobante de depósito (cripto o banco) para que el admin lo apruebe y se acredite mi saldo.
@@ -19,99 +28,136 @@ User stories (POC)
 4. Como creador, quiero postularme a campañas compatibles para ganar dinero.
 5. Como admin, quiero aprobar la evidencia del creador y liberar el pago aplicando comisión.
 
-Steps
-- Definir modelo mínimo en MongoDB: Users, Deposits, WalletLedger/Transactions, Campaigns, Applications, Deliverables.
-- Script/endpoint de prueba (sin UI):
-  - Crear anunciante/creador/admin
-  - Crear depósito “pendiente” + aprobarlo → ledger acredita saldo
-  - Crear campaña + postulación + aceptación
-  - Subir deliverable + aprobar → mover fondos: anunciante→escrow→creador + comisión plataforma
-- Validar reglas: saldo suficiente, estados (pending/approved/rejected), idempotencia (no doble aprobación), comisión 25%/35% (flag Top10).
-- “Websearch” rápida de best practices: ledger/contabilidad doble simple, estados de workflows y validación de idempotencia en pagos manuales.
+Evidencia / resultado
+- Script de prueba ejecutado y aprobado (idempotencia y consistencia de saldos OK).
 
-Exit criteria (POC)
-- Flujo completo ejecutado 3 veces sin inconsistencias de saldo.
+Exit criteria (POC) — logrado
+- Flujo completo ejecutado varias veces sin inconsistencias.
 - No se puede aprobar dos veces el mismo depósito/deliverable.
 - Auditoría: cada movimiento crea Transaction con referencia y timestamps.
 
-### Phase 2 — V1 App Development (MVP funcional)
-**Meta**: construir UI + API completas para el core, con admin panel usable. (Auth incluido porque es requerido por roles y no bloquea integraciones externas.)
+---
 
-User stories (V1)
-1. Como usuario, quiero registrarme/iniciar sesión para acceder a mi panel según mi rol.
-2. Como anunciante, quiero ver mi saldo, depósitos y campañas en un dashboard claro.
-3. Como creador, quiero completar mi perfil ampliado y postularme/subir evidencias.
-4. Como admin, quiero una bandeja de “pendientes” (depósitos, KYC, deliverables, retiros, financiamientos) para operar rápido.
-5. Como fan, quiero explorar creadores y suscribirme para ver contenido exclusivo.
+### Phase 2 — V1 App Development (MVP funcional) **COMPLETADA**
+**Meta:** construir UI + API completas para el core, con admin panel usable.
 
-Backend (FastAPI)
-- Auth JWT (email/password), RBAC (admin/advertiser/creator/fan), seed admin: `edrianttrejol@gmail.com / Sportox@22`.
-- Módulos/Endpoints MVP:
-  - Settings (solo admin): wallet BEP20 + datos bancarios editables.
-  - Deposits: crear (usuario) + listar + admin approve/reject (acredita ledger).
-  - Ledger/Transactions: lectura por usuario + global admin.
-  - Campaigns: CRUD anunciante, estados, cancelación (reembolsa no gastado), dashboard.
-  - Applications: creator apply/withdraw, advertiser review (opcional), admin override.
-  - Deliverables: creator submit link+captura, admin approve/reject → pago.
-  - Subscriptions: creator plan (precio) + fan subscribe/cancel + feed privado.
-  - KYC: upload docs + admin approve/reject.
-  - Withdrawals: request (min $10, requiere KYC) + admin approve/reject; regla 1/mes o 3/mes si Top10.
-  - Rankings (básico): cálculo batch/endpoint basado en métricas guardadas (manual/admin por ahora).
-- Storage de archivos: guardar en servidor (/uploads) con referencia en MongoDB (MVP).
+User stories (V1) — logrado
+1. Registro/inicio de sesión y redirección por rol.
+2. Dashboard anunciante (saldo, depósitos, campañas, revisión de entregables).
+3. Dashboard creador (perfil ampliado, aplicar a campañas, subir evidencias, ganancias, retiros).
+4. Admin: bandeja operativa (depósitos, KYC, entregables, retiros, financiamientos, settings, transacciones).
+5. Fan: explorar creadores, suscribirse y ver contenido premium.
 
-Frontend (React + shadcn/ui)
-- App shell con rutas protegidas por rol.
-- Pantallas mínimas:
-  - Público: home, explorar creadores/rankings, login/registro.
-  - Fan: explorar, perfil creador, suscripción, feed premium.
-  - Anunciante: saldo/depósitos (crear+subir comprobante), campañas (crear/estado), ver entregables.
-  - Creador: perfil ampliado, campañas disponibles, postular, subir evidencias, ganancias/ledger.
-  - Admin: dashboard + tabs: Pendientes, Usuarios, Depósitos, Campañas/Entregables, Retiros, KYC, Financiamientos, Settings, Transacciones.
-- UX states: loading/empty/error, badges de estado, confirm dialogs (cancelaciones/aprobaciones).
+Backend (FastAPI) — entregado
+- Auth JWT (email/password) + RBAC.
+- Seed admin: `edrianttrejol@gmail.com / Sportox@22`.
+- Depósitos manuales (cripto/banco) con comprobante + approve/reject.
+- Campañas: creación, escrow, cancelación con reembolso de no gastado.
+- Applications: postular/aceptar/rechazar.
+- Deliverables: submit + approve/reject (pago al creador con comisión 25% / 35% Top10).
+- KYC: envío docs + approve/reject.
+- Withdrawals: request (min $10, requiere KYC) + regla 1/mes o 3/mes si Top10.
+- Subscriptions: plan por creador + subscribe + cobro con comisión.
+- Premium content: publicación por creador + acceso con suscripción.
+- Music financing: solicitud + approve/reject con acreditación.
+- Rankings básicos: endpoint + recálculo manual admin.
+- Storage local (/uploads) para comprobantes/KYC/archivos (MVP).
 
-Close Phase 2
-- Ejecutar 1 ronda de testing E2E (agent) sobre: registro/login, depósito→aprobación→saldo, campaña→postulación→deliverable→pago.
+Frontend (React + shadcn/ui) — entregado
+- Páginas públicas: Home, Login, Register, Explorar, Rankings, Perfil de creador.
+- Panel Admin: Dashboard + tabs/rutas (Depósitos, Campañas, Entregables, Retiros, KYC, Financiamiento, Usuarios, Transacciones, Configuración).
+- Panel Anunciante: depósitos, crear campaña, ver campañas, revisar aplicaciones/entregables.
+- Panel Creador: perfil ampliado, campañas disponibles, aplicaciones, entregables, ganancias, KYC, retiros, premium.
+- Panel Fan: explorar, suscripciones, depósitos, transacciones.
 
-### Phase 3 — More Features (expansión controlada)
+Testing (E2E) — logrado
+- Testing agent ejecutado, issues detectados y corregidos:
+  - Redirección de registro de creador arreglada.
+  - `data-testid` de sidebar admin corregidos.
+
+---
+
+### Phase 2.5 — Deploy Readiness (Render) + Branding Cleanup **EN PROGRESO**
+**Objetivo:** asegurar despliegue sin problemas y remover dependencias/marca de Emergent.
+
+Tareas
+1. ✅ Guía de despliegue creada: `/app/GUIA_DESPLIEGUE_RENDER.md`.
+2. ⏳ Remover marca/branding Emergent:
+   - Quitar badge/elemento “Made with Emergent” del frontend.
+   - Eliminar dependencia `@emergentbase/visual-edits` si no es necesaria.
+   - Revisar `.env` y `REACT_APP_BACKEND_URL` para producción (Render).
+   - Asegurar que no existan links a `emergent.sh` o assets de Emergent.
+3. ⏳ Ajustes para producción:
+   - Aumentar longitud de `JWT_SECRET` (≥32 chars) para evitar warnings.
+   - Documentar limitación de `/uploads` en Render Free (persistencia).
+
+Exit criteria
+- No aparece ninguna marca Emergent en UI ni dependencias innecesarias.
+- Deploy en Render ejecuta backend y frontend con variables correctas.
+
+---
+
+### Phase 3 — More Features (expansión controlada) **PENDIENTE / SIGUIENTE**
+**Objetivo:** completar módulos avanzados manteniendo el enfoque manual-first y bajo costo.
+
 User stories
-1. Como admin, quiero definir/editar “niveles” (standard/micro/small) y que el matching filtre campañas.
-2. Como anunciante, quiero configurar bonus por umbral de vistas (registrado manualmente) para incentivar rendimiento.
-3. Como creador artista, quiero solicitar financiamiento musical con audio/estadísticas y recibir decisión con mensaje.
-4. Como curador Spotify, quiero registrar playlist y solicitar pago por escuchas con pruebas.
-5. Como fan, quiero ganar micro-recompensas por escuchar 5 canciones y subir evidencia/comentario.
+1. Como curador Spotify, quiero registrar playlists y solicitar pago por escuchas con pruebas.
+2. Como fan/usuario, quiero hacer micro-tareas de escucha (5 canciones + comentario + evidencia) para ganar $0.02.
+3. Como admin, quiero gestionar y aprobar solicitudes de curadores y micro-tareas desde una cola de pendientes.
+4. Como sistema/admin, quiero rankings mejorados y recálculo más claro (manual o job simple).
+5. (Opcional) Matching mejorado por nivel/region/nicho (si entra en presupuesto) y reglas de elegibilidad.
 
-Implementación
-- Matching por nivel/region/nicho + regla de aceptación por nivel.
-- Bonus de campaña (campos + aprobación admin al validar resultados).
-- Financiamiento musical: requests + admin approve/reject con mensaje; ledger de desembolso.
-- Curadores Spotify (simplificado): registrar playlist + solicitud de pago basada en tabla; admin valida prueba.
-- Micro-tareas: tarea creada por sistema, fan sube evidencia+comentario, admin aprueba y acredita $0.02.
-- Rankings: job/cron interno simple (al iniciar o manual en admin) para recalcular Top10.
+Implementación (propuesta)
+- **Curadores Spotify (simplificado):**
+  - CRUD de playlists (5–25 canciones, datos básicos).
+  - Solicitud de pago con campos: #canciones, #escuchas, evidencia (captura).
+  - Tabla de pago fija según reglas del documento.
+  - Admin aprueba/rechaza y acredita saldo.
+- **Micro-tareas (simplificado):**
+  - Crear tarea “escuchar 5 canciones” + comentario + evidencia.
+  - Admin aprueba y acredita $0.02.
+- **Rankings mejorados:**
+  - Más categorías (además de vistos/seguidores), al menos como placeholders con datos manuales.
+  - Botón admin “Recalcular rankings” y explicación de cálculo.
+- **Niveles / matching (si aplica):**
+  - Enforce por creator_level/influencer_level en campañas.
+  - Regla: niveles altos aceptan su nivel o inferiores; niveles bajos solo su nivel.
 
 Close Phase 3
-- 1 ronda de testing E2E (agent) sobre: financiamiento, retiros con KYC, curadores, micro-tareas, ranking.
+- 1 ronda de testing E2E sobre:
+  - Curadores: registro playlist → solicitud → aprobación admin → balance.
+  - Micro-tareas: envío evidencia → aprobación admin → balance.
+  - Rankings: recálculo + visualización.
 
-### Phase 4 — Hardening / Production-readiness (si queda presupuesto)
+---
+
+### Phase 4 — Hardening / Production-readiness (si queda presupuesto y tras tu aprobación)
 User stories
-1. Como admin, quiero exportar transacciones para contabilidad.
-2. Como usuario, quiero ver historial filtrable (fecha/estado/tipo).
-3. Como sistema, quiero evitar fraude básico (re-subida de mismo comprobante, duplicados).
-4. Como creador, quiero ver desglose de ingresos por fuente.
-5. Como anunciante, quiero reportes simples por campaña.
+1. Exportación CSV de transacciones y reportes simples.
+2. Historial filtrable (fecha/estado/tipo) y paginación real.
+3. Anti-fraude básico: detectar comprobantes duplicados, evitar re-subidas.
+4. Desglose de ingresos por fuente (ads vs subs vs financing vs tareas).
+5. Persistencia real de archivos (S3/Cloudinary) para producción.
 
 Implementación
-- Refactor modular (services/repositories), validaciones fuertes, paginación.
-- Auditoría: event log; idempotency keys.
-- Mejoras UI: tablas con filtros, export CSV.
+- Refactor modular, validaciones fuertes, paginación, auditoría mejorada.
+- Integración opcional de almacenamiento externo.
+
+---
 
 ## 3) Next Actions (inmediatas)
-- Confirmar MVP exacto de Phase 2 (core + suscripciones + KYC/retiros incluidos como arriba).
-- Ejecutar Phase 1 POC del ledger/workflow y bloquear avance hasta pasar exit criteria.
-- Definir valores iniciales de Settings admin (wallet + datos bancarios) y textos legales mínimos (términos/privacidad placeholders).
+1. Terminar **Phase 2.5**:
+   - Eliminar “Made with Emergent” y cualquier link/asset de Emergent.
+   - Limpiar dependencias de Emergent en `package.json` si no se usan.
+2. Confirmar alcance exacto de **Phase 3** (Curadores + micro-tareas + rankings mejorados) para no exceder presupuesto.
+3. Ejecutar testing después de Phase 2.5 y al cierre de Phase 3.
+
+---
 
 ## 4) Success Criteria
-- Admin puede operar la plataforma “manual-first” sin huecos: aprobar depósitos, liberar pagos, gestionar retiros/KYC.
+- Admin opera la plataforma end-to-end sin huecos: aprobar depósitos, liberar pagos, gestionar retiros/KYC, settings wallet/banco.
 - Core E2E funciona: depósito→saldo→campaña→postulación→entrega→aprobación→pago+comisión, sin inconsistencias.
-- UI en español, rutas por rol, estados claros y sin pantallas rotas.
-- Ledger/Transacciones auditables y consistentes; restricciones de retiro aplicadas.
+- UI en español, rutas por rol, estados claros, sin pantallas rotas.
+- Deploy en Render exitoso usando la guía (`/app/GUIA_DESPLIEGUE_RENDER.md`).
+- No existe branding de Emergent en el producto final.
 - Testing E2E al cierre de cada fase con correcciones antes de avanzar.

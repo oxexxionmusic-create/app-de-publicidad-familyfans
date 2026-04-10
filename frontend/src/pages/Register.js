@@ -79,16 +79,16 @@ export default function Register() {
               {/* Role Selection */}
               <div className="space-y-2">
                 <Label>Tipo de Cuenta</Label>
-                <RadioGroup value={role} onValueChange={setRole} className="grid grid-cols-1 gap-2">
+                <RadioGroup value={role} onValueChange={(val) => setRole(val)} className="grid grid-cols-1 gap-2">
                   {roles.map(r => (
-                    <div key={r.value} className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${role === r.value ? 'border-primary bg-primary/5' : 'border-border/50 hover:border-border'}`} onClick={() => setRole(r.value)}>
-                      <RadioGroupItem value={r.value} id={r.value} data-testid={`register-role-radio-${r.value}`} />
+                    <label key={r.value} htmlFor={`role-${r.value}`} className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${role === r.value ? 'border-primary bg-primary/5' : 'border-border/50 hover:border-border'}`}>
+                      <RadioGroupItem value={r.value} id={`role-${r.value}`} data-testid={`register-role-radio-${r.value}`} />
                       <r.icon className={`w-5 h-5 ${r.color}`} />
                       <div>
                         <p className="text-sm font-medium">{r.label}</p>
                         <p className="text-xs text-muted-foreground">{r.desc}</p>
                       </div>
-                    </div>
+                    </label>
                   ))}
                 </RadioGroup>
               </div>

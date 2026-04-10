@@ -16,23 +16,23 @@
     "status": "completed"
   },
   {
-    "content": "Phase 2: E2E Testing",
-    "status": "in_progress"
+    "content": "Phase 2: E2E Testing + Bug Fixes",
+    "status": "completed"
   },
   {
-    "content": "Phase 3: Advanced Features (Levels, Financing, Curators, Micro-tasks, Rankings)",
-    "status": "pending"
+    "content": "Phase 2: All user stories covered",
+    "status": "completed"
+  },
+  {
+    "content": "Create Render Deployment Guide + Remove Emergent branding",
+    "status": "completed"
+  },
+  {
+    "content": "Phase 3: Spotify Curators + Micro-tasks backend/frontend",
+    "status": "completed"
   },
   {
     "content": "Phase 3: E2E Testing",
-    "status": "pending"
-  },
-  {
-    "content": "Create Render Deployment Guide",
-    "status": "pending"
-  },
-  {
-    "content": "Remove Emergent branding from code",
-    "status": "pending"
+    "status": "in_progress"
   }
 ]

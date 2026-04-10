@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@/App';
 import { Routes, Route, Link, useLocation, useNavigate } from 'react-router-dom';
-import { adminAPI, depositsAPI, kycAPI, deliverablesAPI, withdrawalsAPI, transactionsAPI, musicFinancingAPI, campaignsAPI } from '@/lib/api';
+import { adminAPI, depositsAPI, kycAPI, deliverablesAPI, withdrawalsAPI, transactionsAPI, musicFinancingAPI, campaignsAPI, curatorAPI, microTasksAPI } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -33,16 +33,18 @@ function Sidebar({ stats }) {
   const { logout } = useAuth();
   const nav = useNavigate();
   const links = [
-    { to: '/admin', icon: LayoutDashboard, label: 'Dashboard', exact: true },
-    { to: '/admin/deposits', icon: DollarSign, label: 'Depositos', badge: stats?.pending_deposits },
-    { to: '/admin/campaigns', icon: Megaphone, label: 'Campanas' },
-    { to: '/admin/deliverables', icon: FileCheck, label: 'Entregables', badge: stats?.pending_deliverables },
-    { to: '/admin/withdrawals', icon: CreditCard, label: 'Retiros', badge: stats?.pending_withdrawals },
-    { to: '/admin/kyc', icon: ShieldCheck, label: 'KYC', badge: stats?.pending_kyc },
-    { to: '/admin/financing', icon: Music, label: 'Financiamiento', badge: stats?.pending_financing },
-    { to: '/admin/users', icon: Users, label: 'Usuarios' },
-    { to: '/admin/transactions', icon: List, label: 'Transacciones' },
-    { to: '/admin/settings', icon: Settings, label: 'Configuracion' },
+    { to: '/admin', icon: LayoutDashboard, label: 'Dashboard', key: 'dashboard', exact: true },
+    { to: '/admin/deposits', icon: DollarSign, label: 'Depositos', key: 'deposits', badge: stats?.pending_deposits },
+    { to: '/admin/campaigns', icon: Megaphone, label: 'Campanas', key: 'campaigns' },
+    { to: '/admin/deliverables', icon: FileCheck, label: 'Entregables', key: 'deliverables', badge: stats?.pending_deliverables },
+    { to: '/admin/withdrawals', icon: CreditCard, label: 'Retiros', key: 'withdrawals', badge: stats?.pending_withdrawals },
+    { to: '/admin/kyc', icon: ShieldCheck, label: 'KYC', key: 'kyc', badge: stats?.pending_kyc },
+    { to: '/admin/financing', icon: Music, label: 'Financiamiento', key: 'financing', badge: stats?.pending_financing },
+    { to: '/admin/curators', icon: Music, label: 'Curadores', key: 'curators', badge: stats?.pending_curator },
+    { to: '/admin/microtasks', icon: Music, label: 'Micro-tareas', key: 'microtasks', badge: stats?.pending_micro_tasks },
+    { to: '/admin/users', icon: Users, label: 'Usuarios', key: 'users' },
+    { to: '/admin/transactions', icon: List, label: 'Transacciones', key: 'transactions' },
+    { to: '/admin/settings', icon: Settings, label: 'Configuracion', key: 'settings' },
   ];
 
   return (
@@ -58,7 +60,7 @@ function Sidebar({ stats }) {
         {links.map(l => {
           const active = l.exact ? location.pathname === l.to : location.pathname.startsWith(l.to);
           return (
-            <Link key={l.to} to={l.to} className={`sidebar-link ${active ? 'active' : ''}`} data-testid={`admin-sidebar-nav-${l.label.toLowerCase()}`}>
+            <Link key={l.to} to={l.to} className={`sidebar-link ${active ? 'active' : ''}`} data-testid={`admin-sidebar-nav-${l.key}`}>
               <l.icon className="w-4 h-4" />
               <span className="flex-1">{l.label}</span>
               {l.badge > 0 && <span className="bg-[hsl(var(--status-pending))]/20 text-[hsl(var(--status-pending))] text-xs px-2 py-0.5 rounded-full font-medium">{l.badge}</span>}
@@ -454,6 +456,14 @@ export default function AdminDashboard() {
           <Route path="financing" element={
             <AdminList title="Financiamiento Musical" fetchFn={musicFinancingAPI.list} approveFn={(id) => musicFinancingAPI.approve(id, '', 0)} rejectFn={(id, note) => musicFinancingAPI.reject(id, note)} type="financing"
               columns={[{key:'title'}, {key:'creator_email'}, {render: i => i.amount_requested ? `$${i.amount_requested}` : ''}]} />
+          } />
+          <Route path="curators" element={
+            <AdminList title="Solicitudes de Curadores" fetchFn={curatorAPI.requests} approveFn={curatorAPI.approveRequest} rejectFn={curatorAPI.rejectRequest} type="curators"
+              columns={[{key:'playlist_name'}, {key:'user_email'}, {render: i => `${i.song_count} canciones · ${i.listens_count} escuchas · $${i.calculated_payout}`}]} />
+          } />
+          <Route path="microtasks" element={
+            <AdminList title="Micro-tareas (Escuchar Musica)" fetchFn={microTasksAPI.list} approveFn={microTasksAPI.approve} rejectFn={microTasksAPI.reject} type="microtasks"
+              columns={[{key:'user_email'}, {render: i => `${i.songs_listened} canciones · $${i.calculated_payout}`}]} />
           } />
           <Route path="users" element={<AdminUsers />} />
           <Route path="campaigns" element={<AdminCampaigns />} />

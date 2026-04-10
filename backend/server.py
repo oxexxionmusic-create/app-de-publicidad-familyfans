@@ -1016,6 +1016,8 @@ async def admin_stats(user=Depends(require_admin)):
     pending_deliverables = await db.deliverables.count_documents({"status": "pending"})
     pending_withdrawals = await db.withdrawals.count_documents({"status": "pending"})
     pending_financing = await db.music_financing.count_documents({"status": "pending"})
+    pending_curator = await db.curator_requests.count_documents({"status": "pending"})
+    pending_micro_tasks = await db.micro_tasks.count_documents({"status": "pending"})
     
     # Platform earnings
     platform_txns = await db.transactions.find({"user_id": "__platform__", "type": "platform_commission"}).to_list(10000)
@@ -1037,6 +1039,8 @@ async def admin_stats(user=Depends(require_admin)):
         "pending_deliverables": pending_deliverables,
         "pending_withdrawals": pending_withdrawals,
         "pending_financing": pending_financing,
+        "pending_curator": pending_curator,
+        "pending_micro_tasks": pending_micro_tasks,
         "total_commissions": round(total_commissions, 2),
         "total_deposited": round(total_deposited, 2),
         "active_campaigns": active_campaigns,
@@ -1104,6 +1108,195 @@ async def get_payment_info(user=Depends(get_current_user)):
         "bank_details": s.get("bank_details", ""),
         "instructions": s.get("instructions", ""),
     }
+
+# ===================== SPOTIFY CURATORS =====================
+CURATOR_RATES = {
+    # (songs, listens): payout
+    (10, 1000): 9.0,
+    (25, 1000): 22.0,
+    (10, 500): 4.0,
+    (5, 500): 2.0,
+    (10, 100): 0.30,
+}
+
+@api.post("/curator/playlist")
+async def register_playlist(
+    playlist_url: str = Form(...),
+    playlist_name: str = Form(""),
+    song_count: int = Form(...),
+    followers: int = Form(0),
+    user=Depends(require_creator)
+):
+    if song_count < 5 or song_count > 25:
+        raise HTTPException(400, "La playlist debe tener entre 5 y 25 canciones")
+    if followers < 10:
+        raise HTTPException(400, "La playlist debe tener al menos 10 seguidores/me gusta")
+    
+    playlist = {
+        "user_id": user["sub"],
+        "user_email": user["email"],
+        "playlist_url": playlist_url,
+        "playlist_name": playlist_name,
+        "song_count": song_count,
+        "followers": followers,
+        "status": "active",
+        "created_at": now_iso(),
+    }
+    result = await db.curator_playlists.insert_one(playlist)
+    playlist["_id"] = result.inserted_id
+    return serialize_doc(playlist)
+
+@api.get("/curator/playlists")
+async def list_playlists(user=Depends(get_current_user)):
+    query = {} if user["role"] == "admin" else {"user_id": user["sub"]}
+    playlists = await db.curator_playlists.find(query).sort("created_at", -1).to_list(500)
+    return [serialize_doc(p) for p in playlists]
+
+@api.post("/curator/payment-request")
+async def curator_payment_request(
+    playlist_id: str = Form(...),
+    listens_count: int = Form(...),
+    evidence_description: str = Form(""),
+    evidence: Optional[UploadFile] = File(None),
+    user=Depends(require_creator)
+):
+    playlist = await db.curator_playlists.find_one({"_id": ObjectId(playlist_id), "user_id": user["sub"]})
+    if not playlist:
+        raise HTTPException(404, "Playlist no encontrada")
+    
+    evidence_url = ""
+    if evidence:
+        evidence_url = await save_upload(evidence)
+    
+    # Calculate payout based on rates table
+    songs = playlist["song_count"]
+    payout = 0.0
+    # Find closest matching rate
+    for (s, l), rate in sorted(CURATOR_RATES.items(), key=lambda x: (-x[0][1], -x[0][0])):
+        if songs >= s and listens_count >= l:
+            payout = rate
+            break
+    
+    if payout == 0:
+        # Minimum: $0.30 per 100 listens for 10 songs
+        if songs >= 5 and listens_count >= 100:
+            payout = round(0.30 * (listens_count / 100) * (songs / 10), 2)
+    
+    request = {
+        "user_id": user["sub"],
+        "user_email": user["email"],
+        "playlist_id": playlist_id,
+        "playlist_name": playlist.get("playlist_name", ""),
+        "song_count": songs,
+        "listens_count": listens_count,
+        "calculated_payout": payout,
+        "evidence_url": evidence_url,
+        "evidence_description": evidence_description,
+        "status": "pending",
+        "created_at": now_iso(),
+        "reviewed_by": None,
+    }
+    result = await db.curator_requests.insert_one(request)
+    request["_id"] = result.inserted_id
+    return serialize_doc(request)
+
+@api.get("/curator/requests")
+async def list_curator_requests(user=Depends(get_current_user)):
+    query = {} if user["role"] == "admin" else {"user_id": user["sub"]}
+    requests = await db.curator_requests.find(query).sort("created_at", -1).to_list(500)
+    return [serialize_doc(r) for r in requests]
+
+@api.put("/admin/curator/requests/{req_id}/approve")
+async def approve_curator_request(req_id: str, user=Depends(require_admin)):
+    r = await db.curator_requests.find_one({"_id": ObjectId(req_id), "status": "pending"})
+    if not r:
+        raise HTTPException(404, "Solicitud no encontrada o ya procesada")
+    
+    payout = r["calculated_payout"]
+    await db.curator_requests.update_one(
+        {"_id": ObjectId(req_id)},
+        {"$set": {"status": "approved", "reviewed_by": user["sub"], "reviewed_at": now_iso()}}
+    )
+    await db.users.update_one({"_id": ObjectId(r["user_id"])}, {"$inc": {"balance": payout}})
+    await db.transactions.insert_one({
+        "user_id": r["user_id"], "type": "curator_payment", "amount": payout,
+        "reference_id": req_id, "description": f"Pago curador: {r['playlist_name']} ({r['listens_count']} escuchas)", "created_at": now_iso(),
+    })
+    return {"message": "Solicitud de curador aprobada", "payout": payout}
+
+@api.put("/admin/curator/requests/{req_id}/reject")
+async def reject_curator_request(req_id: str, note: str = "", user=Depends(require_admin)):
+    result = await db.curator_requests.update_one(
+        {"_id": ObjectId(req_id), "status": "pending"},
+        {"$set": {"status": "rejected", "reviewed_by": user["sub"], "reviewed_at": now_iso(), "admin_note": note}}
+    )
+    if result.modified_count == 0:
+        raise HTTPException(404, "Solicitud no encontrada")
+    return {"message": "Solicitud rechazada"}
+
+# ===================== MICRO-TASKS (Escuchar Musica) =====================
+@api.post("/micro-tasks")
+async def submit_micro_task(
+    songs_listened: int = Form(5),
+    comment: str = Form(""),
+    evidence: Optional[UploadFile] = File(None),
+    user=Depends(get_current_user)
+):
+    evidence_url = ""
+    if evidence:
+        evidence_url = await save_upload(evidence)
+    
+    payout = round(0.02 * (songs_listened / 5), 2)  # $0.02 per 5 songs
+    
+    task = {
+        "user_id": user["sub"],
+        "user_email": user["email"],
+        "songs_listened": songs_listened,
+        "comment": comment,
+        "evidence_url": evidence_url,
+        "calculated_payout": payout,
+        "status": "pending",
+        "created_at": now_iso(),
+        "reviewed_by": None,
+    }
+    result = await db.micro_tasks.insert_one(task)
+    task["_id"] = result.inserted_id
+    return serialize_doc(task)
+
+@api.get("/micro-tasks")
+async def list_micro_tasks(user=Depends(get_current_user)):
+    query = {} if user["role"] == "admin" else {"user_id": user["sub"]}
+    tasks = await db.micro_tasks.find(query).sort("created_at", -1).to_list(500)
+    return [serialize_doc(t) for t in tasks]
+
+@api.put("/admin/micro-tasks/{task_id}/approve")
+async def approve_micro_task(task_id: str, user=Depends(require_admin)):
+    t = await db.micro_tasks.find_one({"_id": ObjectId(task_id), "status": "pending"})
+    if not t:
+        raise HTTPException(404, "Tarea no encontrada o ya procesada")
+    
+    payout = t["calculated_payout"]
+    await db.micro_tasks.update_one(
+        {"_id": ObjectId(task_id)},
+        {"$set": {"status": "approved", "reviewed_by": user["sub"], "reviewed_at": now_iso()}}
+    )
+    await db.users.update_one({"_id": ObjectId(t["user_id"])}, {"$inc": {"balance": payout}})
+    await db.transactions.insert_one({
+        "user_id": t["user_id"], "type": "micro_task_payment", "amount": payout,
+        "reference_id": task_id, "description": f"Micro-tarea: {t['songs_listened']} canciones escuchadas", "created_at": now_iso(),
+    })
+    return {"message": "Tarea aprobada", "payout": payout}
+
+@api.put("/admin/micro-tasks/{task_id}/reject")
+async def reject_micro_task(task_id: str, user=Depends(require_admin)):
+    result = await db.micro_tasks.update_one(
+        {"_id": ObjectId(task_id), "status": "pending"},
+        {"$set": {"status": "rejected", "reviewed_by": user["sub"], "reviewed_at": now_iso()}}
+    )
+    if result.modified_count == 0:
+        raise HTTPException(404, "Tarea no encontrada")
+    return {"message": "Tarea rechazada"}
+
 
 # ===================== STATIC FILES =====================
 app.mount("/api/uploads", StaticFiles(directory=str(UPLOAD_DIR)), name="uploads")
