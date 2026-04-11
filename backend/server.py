@@ -10,8 +10,8 @@ from typing import List, Optional
 from datetime import datetime, timezone, timedelta
 from bson import ObjectId
 from auth import (
-hash_password, verify_password, create_token,
-get_current_user, require_admin, require_advertiser, require_creator
+    hash_password, verify_password, create_token,
+    get_current_user, require_admin, require_advertiser, require_creator
 )
 
 ROOT_DIR = Path(__file__).parent
@@ -157,12 +157,23 @@ async def update_creator_profile(user=Depends(get_current_user)):
 
 @api.post("/auth/creator-profile")
 async def save_creator_profile(
-    content_type: str = Form(""), region: str = Form(""), gender: str = Form(""),
-    phone: str = Form(""), country: str = Form(""), youtube_url: str = Form(""),
-    tiktok_url: str = Form(""), instagram_url: str = Form(""), facebook_url: str = Form(""),
-    spotify_url: str = Form(""), apple_music_url: str = Form(""), bio: str = Form(""),
-    creator_level: str = Form("standard"), artist_level: str = Form(""),
-    niche: str = Form(""), avg_views: int = Form(0), followers: int = Form(0),
+    content_type: str = Form(""),
+    region: str = Form(""),
+    gender: str = Form(""),
+    phone: str = Form(""),
+    country: str = Form(""),
+    youtube_url: str = Form(""),
+    tiktok_url: str = Form(""),
+    instagram_url: str = Form(""),
+    facebook_url: str = Form(""),
+    spotify_url: str = Form(""),
+    apple_music_url: str = Form(""),
+    bio: str = Form(""),
+    creator_level: str = Form("standard"),
+    artist_level: str = Form(""),
+    niche: str = Form(""),
+    avg_views: int = Form(0),
+    followers: int = Form(0),
     metrics_screenshot: Optional[UploadFile] = File(None),
     user=Depends(get_current_user)
 ):
@@ -926,4 +937,3 @@ app.add_middleware(
 @app.on_event("shutdown")
 async def shutdown_db_client():
     client.close()
-    
