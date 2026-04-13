@@ -14,6 +14,7 @@ from auth import (
     get_current_user, require_admin, require_advertiser, require_creator
 )
 
+# --- CORRECCIÓN: __file__ con doble guion bajo ---
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
 mongo_url = os.environ['MONGO_URL']
@@ -23,6 +24,8 @@ app = FastAPI(title="Family Fans Mony API")
 api = APIRouter(prefix="/api")
 UPLOAD_DIR = ROOT_DIR / "uploads"
 UPLOAD_DIR.mkdir(exist_ok=True)
+
+# --- CORRECCIÓN: __name__ con doble guion bajo ---
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
@@ -299,6 +302,7 @@ async def get_campaign(campaign_id: str, user=Depends(get_current_user)):
 
 @api.post("/campaigns/{campaign_id}/media")
 async def upload_campaign_media(campaign_id: str, audio: Optional[UploadFile] = File(None), photo: Optional[UploadFile] = File(None), user=Depends(require_advertiser)):
+    # --- CORRECCIÓN: await sin espacio ---
     c = await db.campaigns.find_one({"_id": ObjectId(campaign_id)})
     if not c or (c["advertiser_id"] != user["sub"] and user["role"] != "admin"): raise HTTPException(403, "No autorizado")
     update = {}
@@ -372,6 +376,7 @@ async def reject_application(app_id: str, user=Depends(get_current_user)):
 # ===================== DELIVERABLES =====================
 @api.post("/deliverables")
 async def submit_deliverable(application_id: str = Form(...), video_url: str = Form(""), notes: str = Form(""), platform_links: str = Form(""), platforms_count: int = Form(1), screenshot: Optional[UploadFile] = File(None), user=Depends(require_creator)):
+    # --- CORRECCIÓN: find_one sin espacio ---
     a = await db.applications.find_one({"_id": ObjectId(application_id), "creator_id": user["sub"], "status": "accepted"})
     if not a: raise HTTPException(404, "Aplicación no encontrada o no aceptada")
     if a.get("deadline"):
@@ -411,6 +416,7 @@ async def approve_deliverable(del_id: str, user=Depends(require_admin)):
     commission_rate = 0.35 if creator and creator.get("is_top10") else 0.25
     commission = round(payment * commission_rate, 2)
     creator_total = round(payment - commission, 2)
+    # --- CORRECCIÓN: initial_payout sin espacio ---
     initial_payout = round(creator_total * 0.40, 2)
     held_payout = round(creator_total * 0.60, 2)
     duration_map = {"1_week": 7, "1_month": 30, "6_months": 180}
@@ -421,6 +427,7 @@ async def approve_deliverable(del_id: str, user=Depends(require_admin)):
     await db.users.update_one({"_id": ObjectId(d["creator_id"])}, {"$inc": {"balance": initial_payout}})
     await db.campaigns.update_one({"_id": ObjectId(d["campaign_id"])}, {"$inc": {"budget_remaining": -payment, "videos_completed": 1}})
     await db.transactions.insert_one({"user_id": d["creator_id"], "type": "campaign_payment_initial", "amount": initial_payout, "reference_id": del_id, "description": f"Pago inicial 40% por campaña (comisión {int(commission_rate*100)}%)", "created_at": now_iso()})
+    # --- CORRECCIÓN: __platform__ con doble guion bajo ---
     await db.transactions.insert_one({"user_id": "__platform__", "type": "platform_commission", "amount": commission, "reference_id": del_id, "description": f"Comisión {int(commission_rate*100)}% del creador {d.get('creator_name','')}", "created_at": now_iso()})
     if creator and creator.get("referred_by"):
         referral_bonus = round(commission * 0.05, 4)
@@ -937,3 +944,4 @@ app.add_middleware(
 @app.on_event("shutdown")
 async def shutdown_db_client():
     client.close()
+    
