@@ -1,10 +1,11 @@
 import { createContext, useContext, useState, useEffect, useCallback } from "react";
 import "@/App.css";
-import { BrowserRouter, Routes, Route, Navigate, useNavigate, useLocation } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { Toaster } from "@/components/ui/sonner";
 import { authAPI } from "@/lib/api";
 
-// Lazy imports for code splitting
+// Importaciones de tus páginas
+// Asegúrate de que estos archivos existan en tu carpeta src/pages/
 import Home from "@/pages/Home";
 import Login from "@/pages/Login";
 import Register from "@/pages/Register";
@@ -16,9 +17,8 @@ import Rankings from "@/pages/Rankings";
 import Explore from "@/pages/Explore";
 import CreatorProfile from "@/pages/CreatorProfile";
 
-// Auth Context
+// Contexto de Autenticación
 const AuthContext = createContext(null);
-
 export const useAuth = () => useContext(AuthContext);
 
 function AuthProvider({ children }) {
@@ -75,17 +75,13 @@ function AuthProvider({ children }) {
   );
 }
 
-// Protected Route
+// Ruta Protegida por Rol
 function ProtectedRoute({ children, roles }) {
   const { user, loading } = useAuth();
   const location = useLocation();
 
   if (loading) {
-    return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
-      </div>
-    );
+    return <div className="flex items-center justify-center h-screen">Cargando...</div>;
   }
 
   if (!user) {
@@ -99,19 +95,15 @@ function ProtectedRoute({ children, roles }) {
   return children;
 }
 
-// Redirect based on role
+// Redirección automática al dashboard correcto según el rol
 function DashboardRedirect() {
   const { user, loading } = useAuth();
 
   if (loading) {
-    return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
-      </div>
-    );
+    return <div className="flex items-center justify-center h-screen">Cargando...</div>;
   }
 
-  if (!user) return <Navigate to="/" replace />;
+  if (!user) return <Navigate to="/login" replace />;
 
   switch (user.role) {
     case "admin":
@@ -132,7 +124,7 @@ function App() {
     <BrowserRouter>
       <AuthProvider>
         <Routes>
-          {/* Public */}
+          {/* Rutas Públicas */}
           <Route path="/" element={<Home />} />
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
@@ -140,38 +132,50 @@ function App() {
           <Route path="/explorar" element={<Explore />} />
           <Route path="/creador/:id" element={<CreatorProfile />} />
           
-          {/* Dashboard redirect */}
+          {/* Redirección inteligente al dashboard */}
           <Route path="/dashboard" element={<DashboardRedirect />} />
-          
+
           {/* Admin */}
-          <Route path="/admin/*" element={
-            <ProtectedRoute roles={["admin"]}>
-              <AdminDashboard />
-            </ProtectedRoute>
-          } />
-          
-          {/* Advertiser */}
-          <Route path="/advertiser/*" element={
-            <ProtectedRoute roles={["advertiser", "admin"]}>
-              <AdvertiserDashboard />
-            </ProtectedRoute>
-          } />
-          
-          {/* Creator */}
-          <Route path="/creator/*" element={
-            <ProtectedRoute roles={["creator", "admin"]}>
-              <CreatorDashboard />
-            </ProtectedRoute>
-          } />
-          
+          <Route
+            path="/admin/*"
+            element={
+              <ProtectedRoute roles={["admin"]}>
+                <AdminDashboard />
+              </ProtectedRoute>
+            }
+          />
+
+          {/* Anunciante */}
+          <Route
+            path="/advertiser/*"
+            element={
+              <ProtectedRoute roles={["advertiser", "admin"]}>
+                <AdvertiserDashboard />
+              </ProtectedRoute>
+            }
+          />
+
+          {/* Creador */}
+          <Route
+            path="/creator/*"
+            element={
+              <ProtectedRoute roles={["creator", "admin"]}>
+                <CreatorDashboard />
+              </ProtectedRoute>
+            }
+          />
+
           {/* Fan */}
-          <Route path="/fan/*" element={
-            <ProtectedRoute roles={["fan", "admin"]}>
-              <FanDashboard />
-            </ProtectedRoute>
-          } />
-          
-          {/* Catch all */}
+          <Route
+            path="/fan/*"
+            element={
+              <ProtectedRoute roles={["fan", "admin"]}>
+                <FanDashboard />
+              </ProtectedRoute>
+            }
+          />
+
+          {/* Ruta por defecto (404 -> Home) */}
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
         <Toaster position="top-right" richColors />
