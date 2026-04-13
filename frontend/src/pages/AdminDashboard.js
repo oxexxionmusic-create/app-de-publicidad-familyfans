@@ -11,19 +11,30 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { toast } from 'sonner';
 import { API_BASE } from '@/lib/api';
 import {
-  LayoutDashboard, Users, DollarSign, Megaphone, FileCheck, CreditCard, ShieldCheck, Music, Settings, List,
-  CheckCircle2, XCircle, Clock, LogOut, Zap, ChevronRight, Eye, TrendingUp, AlertCircle, RefreshCw, ExternalLink
+LayoutDashboard, Users, DollarSign, Megaphone, FileCheck, CreditCard, ShieldCheck, Music, Settings, List,
+CheckCircle2, XCircle, Clock, LogOut, Zap, ChevronRight, Eye, TrendingUp, AlertCircle, RefreshCw, ExternalLink, Video
 } from 'lucide-react';
 
 function StatusBadge({ status }) {
   const map = {
-    pending: 'status-badge-pending', approved: 'status-badge-approved', rejected: 'status-badge-rejected',
-    active: 'status-badge-active', completed: 'status-badge-approved', cancelled: 'status-badge-rejected',
-    verified: 'status-badge-approved', none: 'status-badge-pending',
+    pending: 'status-badge-pending',
+    approved: 'status-badge-approved',
+    rejected: 'status-badge-rejected',
+    active: 'status-badge-active',
+    completed: 'status-badge-approved',
+    cancelled: 'status-badge-rejected',
+    verified: 'status-badge-approved',
+    none: 'status-badge-pending',
   };
   const labels = {
-    pending: 'Pendiente', approved: 'Aprobado', rejected: 'Rechazado', active: 'Activo',
-    completed: 'Completado', cancelled: 'Cancelado', verified: 'Verificado', none: 'Sin KYC',
+    pending: 'Pendiente',
+    approved: 'Aprobado',
+    rejected: 'Rechazado',
+    active: 'Activo',
+    completed: 'Completado',
+    cancelled: 'Cancelado',
+    verified: 'Verificado',
+    none: 'Sin KYC',
   };
   return <span className={map[status] || 'status-badge-pending'}>{labels[status] || status}</span>;
 }
@@ -52,10 +63,9 @@ function Sidebar({ stats }) {
   ];
 
   return (
-    <div className="w-64 border-r border-border/50 bg-[hsl(var(--surface-2))] p-4">
+    <div className="w-64 bg-[hsl(var(--surface-2))] border-r border-border/50 p-4">
       <p className="font-semibold text-sm mb-6" style={{fontFamily:'Space Grotesk'}}>
-        Family Fans Mony<br/>
-        <span className="text-xs text-muted-foreground">Admin Panel</span>
+        Family Fans Mony<br/>Admin Panel
       </p>
       {links.map(l => {
         const active = l.exact ? location.pathname === l.to : location.pathname.startsWith(l.to);
@@ -63,12 +73,12 @@ function Sidebar({ stats }) {
           <Link key={l.to} to={l.to} className={`sidebar-link ${active ? 'active' : ''}`} data-testid={`admin-sidebar-nav-${l.key}`}>
             <l.icon className="w-4 h-4" />
             {l.label}
-            {l.badge > 0 && <span className="ml-auto text-xs bg-primary text-primary-foreground px-2 py-0.5 rounded-full">{l.badge}</span>}
+            {l.badge > 0 && <span className="ml-auto bg-primary text-primary-foreground text-xs rounded-full px-2 py-0.5">{l.badge}</span>}
           </Link>
         );
       })}
       <button onClick={() => { logout(); nav('/'); }} className="sidebar-link text-destructive mt-4">
-        <LogOut className="w-4 h-4 mr-2" /> Cerrar Sesion
+        <LogOut className="w-4 h-4" /> Cerrar Sesion
       </button>
     </div>
   );
@@ -76,9 +86,9 @@ function Sidebar({ stats }) {
 
 function KPICard({ label, value, icon: Icon, color = 'text-primary' }) {
   return (
-    <Card className="card-hover">
+    <Card className="card-hover border-border/50">
       <CardContent className="p-4">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between mb-2">
           <p className="text-xs text-muted-foreground">{label}</p>
           <Icon className={`w-4 h-4 ${color}`} />
         </div>
@@ -86,7 +96,7 @@ function KPICard({ label, value, icon: Icon, color = 'text-primary' }) {
           {typeof value === 'number' 
             ? (label.includes('$') || label.includes('Comision') || label.includes('Deposit') 
               ? `$${value.toLocaleString()}` 
-              : value.toLocaleString()) 
+              : value.toLocaleString())
             : value}
         </p>
       </CardContent>
@@ -99,22 +109,22 @@ function DashboardHome({ stats, refresh }) {
   if (!stats) return <div>Cargando...</div>;
   
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
+    <div>
+      <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-semibold" style={{fontFamily:'Space Grotesk'}}>Dashboard</h1>
         <Button variant="outline" size="sm" onClick={refresh}>
           <RefreshCw className="w-4 h-4 mr-1" /> Actualizar
         </Button>
       </div>
       
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
         <KPICard label="Total Usuarios" value={stats.total_users} icon={Users} />
         <KPICard label="Campanas Activas" value={stats.active_campaigns} icon={Megaphone} color="text-[hsl(199,78%,48%)]" />
         <KPICard label="Total Depositado $" value={stats.total_deposited} icon={DollarSign} color="text-[hsl(152,58%,44%)]" />
         <KPICard label="Comisiones Ganadas $" value={stats.total_commissions} icon={TrendingUp} color="text-[hsl(43,96%,56%)]" />
       </div>
       
-      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
         {[
           { label: 'Depositos Pendientes', v: stats.pending_deposits, icon: DollarSign, to: '/admin/deposits' },
           { label: 'Entregables Pendientes', v: stats.pending_deliverables, icon: FileCheck, to: '/admin/deliverables' },
@@ -182,24 +192,24 @@ function AdminList({ title, fetchFn, approveFn, rejectFn, columns, type }) {
   });
   
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
+    <div>
+      <div className="flex items-center justify-between mb-6">
         <h2 className="text-xl font-semibold" style={{fontFamily:'Space Grotesk'}}>{title}</h2>
-        <div className="flex items-center gap-2">
-          <Input placeholder="Buscar..." value={filter} onChange={e => setFilter(e.target.value)} 
-                 className="w-48" data-testid={`admin-${type}-search-input`} />
-          <Button variant="outline" size="sm" onClick={load}>
-            <RefreshCw className="w-4 h-4" />
-          </Button>
-        </div>
+        <Input placeholder="Buscar..." value={filter} onChange={e => setFilter(e.target.value)} className="w-48" data-testid={`admin-${type}-search-input`} />
       </div>
+      
+      <Button variant="outline" size="sm" onClick={load} className="mb-4">
+        <RefreshCw className="w-4 h-4 mr-1" /> Actualizar
+      </Button>
       
       {loading ? (
         <div className="space-y-2">
           {[1,2,3].map(i => <div key={i} className="h-16 rounded-lg bg-[hsl(var(--surface-2))] animate-pulse" />)}
         </div>
       ) : filtered.length === 0 ? (
-        <Card className="border-border/50"><CardContent className="p-8 text-center text-muted-foreground">No hay elementos</CardContent></Card>
+        <Card className="border-border/50">
+          <CardContent className="p-8 text-center text-muted-foreground">No hay elementos</CardContent>
+        </Card>
       ) : (
         <div className="space-y-2" data-testid={`admin-${type}-table`}>
           {filtered.map(item => (
@@ -226,47 +236,47 @@ function AdminList({ title, fetchFn, approveFn, rejectFn, columns, type }) {
                     )}
                     {item.user_email && <p className="text-xs text-muted-foreground mt-1">{item.user_email}</p>}
                     
-                    {/* --- MOSTRAR ENLACES DE VOCAROO Y REFERENCIA SI EXISTEN --- */}
+                    {/* MOSTRAR ENLACES DE VOCAROO Y REFERENCIA SI EXISTEN */}
                     {item.vocaroo_link && (
                       <a href={item.vocaroo_link} target="_blank" rel="noopener noreferrer" 
-                         className="text-xs text-primary hover:underline flex items-center gap-1 mt-1">
+                        className="text-xs text-primary hover:underline flex items-center gap-1 mt-1">
                         <Music className="w-3 h-3" /> Audio de instrucciones (Vocaroo)
                       </a>
                     )}
                     {item.reference_link && (
                       <a href={item.reference_link} target="_blank" rel="noopener noreferrer" 
-                         className="text-xs text-primary hover:underline flex items-center gap-1 mt-1">
+                        className="text-xs text-primary hover:underline flex items-center gap-1 mt-1">
                         <ExternalLink className="w-3 h-3" /> Enlace de referencia
                       </a>
                     )}
                     
                     {item.proof_url && (
                       <a href={`${API_BASE.replace('/api','')}${item.proof_url}`} target="_blank" rel="noopener noreferrer" 
-                         className="text-xs text-primary hover:underline flex items-center gap-1 mt-1">
+                        className="text-xs text-primary hover:underline flex items-center gap-1 mt-1">
                         <Eye className="w-3 h-3" /> Ver comprobante
                       </a>
                     )}
                     {item.document_url && (
                       <a href={`${API_BASE.replace('/api','')}${item.document_url}`} target="_blank" rel="noopener noreferrer" 
-                         className="text-xs text-primary hover:underline flex items-center gap-1 mr-2">
+                        className="text-xs text-primary hover:underline flex items-center gap-1 mr-2">
                         <Eye className="w-3 h-3" /> Documento
                       </a>
                     )}
                     {item.selfie_url && (
                       <a href={`${API_BASE.replace('/api','')}${item.selfie_url}`} target="_blank" rel="noopener noreferrer" 
-                         className="text-xs text-primary hover:underline flex items-center gap-1">
+                        className="text-xs text-primary hover:underline flex items-center gap-1">
                         <Eye className="w-3 h-3" /> Selfie
                       </a>
                     )}
                     {item.video_url && (
                       <a href={item.video_url} target="_blank" rel="noopener noreferrer" 
-                         className="text-xs text-primary hover:underline flex items-center gap-1 mt-1">
+                        className="text-xs text-primary hover:underline flex items-center gap-1 mt-1">
                         <Video className="w-3 h-3" /> Video
                       </a>
                     )}
                     {item.audio_url && (
                       <a href={`${API_BASE.replace('/api','')}${item.audio_url}`} target="_blank" rel="noopener noreferrer" 
-                         className="text-xs text-primary hover:underline flex items-center gap-1 mt-1">
+                        className="text-xs text-primary hover:underline flex items-center gap-1 mt-1">
                         <Music className="w-3 h-3" /> Audio
                       </a>
                     )}
@@ -340,16 +350,14 @@ function AdminUsers() {
   };
   
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <h2 className="text-xl font-semibold" style={{fontFamily:'Space Grotesk'}}>Usuarios</h2>
-        <div className="flex gap-2">
-          {['', 'advertiser', 'creator', 'fan'].map(r => (
-            <Button key={r} variant={roleFilter === r ? 'default' : 'outline'} size="sm" onClick={() => setRoleFilter(r)}>
-              {r || 'Todos'}
-            </Button>
-          ))}
-        </div>
+    <div>
+      <h2 className="text-xl font-semibold mb-4" style={{fontFamily:'Space Grotesk'}}>Usuarios</h2>
+      <div className="flex gap-2 mb-4">
+        {['', 'advertiser', 'creator', 'fan'].map(r => (
+          <Button key={r} variant={roleFilter === r ? 'default' : 'outline'} size="sm" onClick={() => setRoleFilter(r)}>
+            {r || 'Todos'}
+          </Button>
+        ))}
       </div>
       
       {loading ? (
@@ -366,7 +374,7 @@ function AdminUsers() {
                     <div className="flex items-center gap-2">
                       {u.profile_photo_url && (
                         <img src={u.profile_photo_url.startsWith('/') ? `${window.location.origin}${u.profile_photo_url}` : u.profile_photo_url} 
-                             className="w-8 h-8 rounded-full object-cover" alt="" />
+                            className="w-8 h-8 rounded-full object-cover" alt="" />
                       )}
                       <p className="font-medium">{u.name}</p>
                       <span className="text-xs px-2 py-0.5 rounded bg-[hsl(var(--surface-3))]">{u.role}</span>
@@ -402,21 +410,23 @@ function AdminTransactions() {
   const [txns, setTxns] = useState([]);
   const [loading, setLoading] = useState(true);
   
-  useEffect(() => { 
-    transactionsAPI.list().then(res => { setTxns(res.data); setLoading(false); }).catch(() => setLoading(false)); 
+  useEffect(() => {
+    transactionsAPI.list().then(res => { setTxns(res.data); setLoading(false); }).catch(() => setLoading(false));
   }, []);
   
   return (
-    <div className="space-y-4">
-      <h2 className="text-xl font-semibold" style={{fontFamily:'Space Grotesk'}}>Transacciones</h2>
+    <div>
+      <h2 className="text-xl font-semibold mb-4" style={{fontFamily:'Space Grotesk'}}>Transacciones</h2>
       {loading ? (
         <div className="space-y-2">
           {[1,2,3].map(i => <div key={i} className="h-12 rounded-lg bg-[hsl(var(--surface-2))] animate-pulse" />)}
         </div>
       ) : txns.length === 0 ? (
-        <Card className="border-border/50"><CardContent className="p-8 text-center text-muted-foreground">Sin transacciones</CardContent></Card>
+        <Card className="border-border/50">
+          <CardContent className="p-8 text-center text-muted-foreground">Sin transacciones</CardContent>
+        </Card>
       ) : (
-        <div className="space-y-2">
+        <div className="space-y-1">
           {txns.map(t => (
             <div key={t.id} className="flex items-center justify-between p-3 rounded-lg bg-[hsl(var(--surface-2))]">
               <div>
@@ -440,8 +450,8 @@ function AdminSettings() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   
-  useEffect(() => { 
-    adminAPI.settings().then(res => { setS(res.data); setLoading(false); }).catch(() => setLoading(false)); 
+  useEffect(() => {
+    adminAPI.settings().then(res => { setS(res.data); setLoading(false); }).catch(() => setLoading(false));
   }, []);
   
   const handleSave = async () => {
@@ -458,51 +468,55 @@ function AdminSettings() {
   if (loading) return <div>Cargando...</div>;
   
   return (
-    <div className="space-y-6">
-      <h2 className="text-xl font-semibold" style={{fontFamily:'Space Grotesk'}}>Configuracion de Pagos</h2>
+    <div>
+      <h2 className="text-xl font-semibold mb-4" style={{fontFamily:'Space Grotesk'}}>Configuracion de Pagos</h2>
       
-      <Card>
-        <CardHeader><CardTitle className="text-base" style={{fontFamily:'Space Grotesk'}}>Wallet Criptomonedas</CardTitle></CardHeader>
+      <Card className="mb-4">
+        <CardHeader>
+          <CardTitle className="text-base" style={{fontFamily:'Space Grotesk'}}>Wallet Criptomonedas</CardTitle>
+        </CardHeader>
         <CardContent className="space-y-4">
           <div>
             <Label>Direccion Wallet</Label>
-            <Input value={s.crypto_wallet_address || ''} onChange={e => setS({...s, crypto_wallet_address: e.target.value})} placeholder="0x..."/>
+            <Input value={s.crypto_wallet_address || ''} onChange={e => setS({...s, crypto_wallet_address: e.target.value})} placeholder="0x..." />
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div>
               <Label>Red</Label>
-              <Input value={s.crypto_network || ''} onChange={e => setS({...s, crypto_network: e.target.value})}/>
+              <Input value={s.crypto_network || ''} onChange={e => setS({...s, crypto_network: e.target.value})} />
             </div>
             <div>
               <Label>Moneda</Label>
-              <Input value={s.crypto_currency || ''} onChange={e => setS({...s, crypto_currency: e.target.value})}/>
+              <Input value={s.crypto_currency || ''} onChange={e => setS({...s, crypto_currency: e.target.value})} />
             </div>
           </div>
         </CardContent>
       </Card>
       
-      <Card>
-        <CardHeader><CardTitle className="text-base" style={{fontFamily:'Space Grotesk'}}>Datos Bancarios</CardTitle></CardHeader>
+      <Card className="mb-4">
+        <CardHeader>
+          <CardTitle className="text-base" style={{fontFamily:'Space Grotesk'}}>Datos Bancarios</CardTitle>
+        </CardHeader>
         <CardContent className="space-y-4">
           <div>
             <Label>Nombre del Banco</Label>
-            <Input value={s.bank_name || ''} onChange={e => setS({...s, bank_name: e.target.value})}/>
+            <Input value={s.bank_name || ''} onChange={e => setS({...s, bank_name: e.target.value})} />
           </div>
           <div>
             <Label>Titular</Label>
-            <Input value={s.bank_account_holder || ''} onChange={e => setS({...s, bank_account_holder: e.target.value})}/>
+            <Input value={s.bank_account_holder || ''} onChange={e => setS({...s, bank_account_holder: e.target.value})} />
           </div>
           <div>
             <Label>Numero de Cuenta</Label>
-            <Input value={s.bank_account_number || ''} onChange={e => setS({...s, bank_account_number: e.target.value})}/>
+            <Input value={s.bank_account_number || ''} onChange={e => setS({...s, bank_account_number: e.target.value})} />
           </div>
           <div>
             <Label>Detalles Adicionales</Label>
-            <Textarea value={s.bank_details || ''} onChange={e => setS({...s, bank_details: e.target.value})}/>
+            <Textarea value={s.bank_details || ''} onChange={e => setS({...s, bank_details: e.target.value})} />
           </div>
           <div>
             <Label>Instrucciones para Usuarios</Label>
-            <Textarea value={s.instructions || ''} onChange={e => setS({...s, instructions: e.target.value})} className="mt-2" rows={3}/>
+            <Textarea value={s.instructions || ''} onChange={e => setS({...s, instructions: e.target.value})} className="mt-2" rows={3} />
           </div>
         </CardContent>
       </Card>
@@ -519,8 +533,8 @@ function AdminCampaigns() {
   const [campaigns, setCampaigns] = useState([]);
   const [loading, setLoading] = useState(true);
   
-  useEffect(() => { 
-    campaignsAPI.list().then(res => { setCampaigns(res.data); setLoading(false); }).catch(() => setLoading(false)); 
+  useEffect(() => {
+    campaignsAPI.list().then(res => { setCampaigns(res.data); setLoading(false); }).catch(() => setLoading(false));
   }, []);
   
   const handleCancel = async (id) => {
@@ -533,41 +547,50 @@ function AdminCampaigns() {
   };
   
   return (
-    <div className="space-y-4">
-      <h2 className="text-xl font-semibold" style={{fontFamily:'Space Grotesk'}}>Campanas</h2>
+    <div>
+      <h2 className="text-xl font-semibold mb-4" style={{fontFamily:'Space Grotesk'}}>Campanas</h2>
       {loading ? (
         <div className="space-y-2">
           {[1,2,3].map(i => <div key={i} className="h-24 rounded-lg bg-[hsl(var(--surface-2))] animate-pulse" />)}
         </div>
       ) : campaigns.length === 0 ? (
-        <Card className="border-border/50"><CardContent className="p-8 text-center text-muted-foreground">Sin campanas</CardContent></Card>
+        <Card className="border-border/50">
+          <CardContent className="p-8 text-center text-muted-foreground">Sin campanas</CardContent>
+        </Card>
       ) : (
         <div className="space-y-3">
           {campaigns.map(c => (
             <Card key={c.id} className="border-border/50">
               <CardContent className="p-4">
                 <div className="flex items-start justify-between">
-                  <div>
+                  <div className="flex-1">
                     <div className="flex items-center gap-2 mb-1">
                       <p className="font-semibold">{c.title}</p>
                       <StatusBadge status={c.status} />
                     </div>
-                    <p className="text-xs text-muted-foreground">
-                      Presupuesto: ${c.budget} · Restante: ${c.budget_remaining} · Videos: {c.videos_completed}/{c.videos_requested} · {c.advertiser_name}
-                    </p>
-                    <p className="text-xs text-muted-foreground mt-1">
-                      {c.niche} · {c.region} · {(c.social_networks || []).join(', ')}
-                    </p>
-                    {/* --- MOSTRAR ENLACES DE VOCAROO Y REFERENCIA --- */}
+                    <p className="text-xs text-muted-foreground mb-2">{c.description}</p>
+                    <div className="flex flex-wrap gap-2 text-xs text-muted-foreground mb-2">
+                      <span>Presupuesto: ${c.budget}</span>
+                      <span>Restante: ${c.budget_remaining}</span>
+                      <span>Videos: {c.videos_completed}/{c.videos_requested}</span>
+                      <span>{c.advertiser_name}</span>
+                    </div>
+                    <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
+                      <span>{c.niche}</span>
+                      <span>{c.region}</span>
+                      <span>{(c.social_networks || []).join(', ')}</span>
+                    </div>
+                    
+                    {/* MOSTRAR ENLACES DE VOCAROO Y REFERENCIA */}
                     {c.vocaroo_link && (
-                      <a href={c.vocaroo_link} target="_blank" rel="noopener noreferrer" 
-                         className="text-xs text-primary hover:underline flex items-center gap-1 mt-1">
+                      <a href={c.vocaroo_link} target="_blank" rel="noopener noreferrer"
+                        className="text-xs text-primary hover:underline flex items-center gap-1 mt-2">
                         <Music className="w-3 h-3" /> Audio de instrucciones (Vocaroo)
                       </a>
                     )}
                     {c.reference_link && (
-                      <a href={c.reference_link} target="_blank" rel="noopener noreferrer" 
-                         className="text-xs text-primary hover:underline flex items-center gap-1 mt-1">
+                      <a href={c.reference_link} target="_blank" rel="noopener noreferrer"
+                        className="text-xs text-primary hover:underline flex items-center gap-1 mt-1">
                         <ExternalLink className="w-3 h-3" /> Enlace de referencia
                       </a>
                     )}
@@ -590,17 +613,17 @@ function AdminWallet() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   
-  useEffect(() => { 
-    adminWalletAPI.get().then(res => { setData(res.data); setLoading(false); }).catch(() => setLoading(false)); 
+  useEffect(() => {
+    adminWalletAPI.get().then(res => { setData(res.data); setLoading(false); }).catch(() => setLoading(false));
   }, []);
   
   if (loading) return <div>Cargando...</div>;
   
   return (
-    <div className="space-y-6">
-      <h2 className="text-xl font-semibold" style={{fontFamily:'Space Grotesk'}}>Billetera de la Plataforma</h2>
+    <div>
+      <h2 className="text-xl font-semibold mb-4" style={{fontFamily:'Space Grotesk'}}>Billetera de la Plataforma</h2>
       
-      <Card>
+      <Card className="mb-4">
         <CardContent className="p-6">
           <p className="text-sm text-muted-foreground mb-1">Total Comisiones Acumuladas</p>
           <p className="text-3xl font-semibold tabular-nums text-primary" style={{fontFamily:'Space Grotesk'}}>
@@ -610,7 +633,9 @@ function AdminWallet() {
       </Card>
       
       <Card>
-        <CardHeader><CardTitle className="text-base" style={{fontFamily:'Space Grotesk'}}>Historial de Comisiones</CardTitle></CardHeader>
+        <CardHeader>
+          <CardTitle className="text-base" style={{fontFamily:'Space Grotesk'}}>Historial de Comisiones</CardTitle>
+        </CardHeader>
         <CardContent className="space-y-2">
           {(data?.transactions || []).map(t => (
             <div key={t.id} className="flex items-center justify-between p-3 rounded-lg bg-[hsl(var(--surface-2))]">
@@ -634,8 +659,8 @@ function AdminRankingBoards() {
   const [newName, setNewName] = useState('');
   const [newDesc, setNewDesc] = useState('');
   
-  const load = () => { 
-    rankingBoardsAPI.list().then(res => { setBoards(res.data); setLoading(false); }).catch(() => setLoading(false)); 
+  const load = () => {
+    rankingBoardsAPI.list().then(res => { setBoards(res.data); setLoading(false); }).catch(() => setLoading(false));
   };
   
   useEffect(() => { load(); }, []);
@@ -654,10 +679,10 @@ function AdminRankingBoards() {
   };
   
   return (
-    <div className="space-y-6">
-      <h2 className="text-xl font-semibold" style={{fontFamily:'Space Grotesk'}}>Tableros de Ranking Personalizados</h2>
+    <div>
+      <h2 className="text-xl font-semibold mb-4" style={{fontFamily:'Space Grotesk'}}>Tableros de Ranking Personalizados</h2>
       
-      <Card>
+      <Card className="mb-4">
         <CardContent className="p-4 space-y-4">
           <h3 className="font-medium">Crear Nuevo Tablero</h3>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -673,7 +698,9 @@ function AdminRankingBoards() {
           {[1,2,3].map(i => <div key={i} className="h-24 rounded-lg bg-[hsl(var(--surface-2))] animate-pulse" />)}
         </div>
       ) : boards.length === 0 ? (
-        <Card className="border-border/50"><CardContent className="p-8 text-center text-muted-foreground">Sin tableros personalizados</CardContent></Card>
+        <Card className="border-border/50">
+          <CardContent className="p-8 text-center text-muted-foreground">Sin tableros personalizados</CardContent>
+        </Card>
       ) : (
         <div className="space-y-3">
           {boards.map(b => (
@@ -712,28 +739,26 @@ function AdminUsersEnhanced() {
   const toggleTop10 = async (userId, current) => {
     const fd = new FormData();
     fd.append('is_top10', !current);
-    try { await adminAPI.toggleTop10(userId, fd); toast.success(`Top 10 ${!current ? 'activado' : 'desactivado'}`); load(); } 
+    try { await adminAPI.toggleTop10(userId, fd); toast.success(`Top 10 ${!current ? 'activado' : 'desactivado'}`); load(); }
     catch { toast.error('Error'); }
   };
   
   const setLevel = async (userId, level) => {
     const fd = new FormData();
     fd.append('level', level);
-    try { await adminLevelAPI.setLevel(userId, fd); toast.success(`Nivel actualizado a ${level}`); load(); } 
+    try { await adminLevelAPI.setLevel(userId, fd); toast.success(`Nivel actualizado a ${level}`); load(); }
     catch { toast.error('Error'); }
   };
   
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <h2 className="text-xl font-semibold" style={{fontFamily:'Space Grotesk'}}>Usuarios</h2>
-        <div className="flex gap-2">
-          {['', 'advertiser', 'creator', 'fan'].map(r => (
-            <Button key={r} variant={roleFilter === r ? 'default' : 'outline'} size="sm" onClick={() => setRoleFilter(r)}>
-              {r || 'Todos'}
-            </Button>
-          ))}
-        </div>
+    <div>
+      <h2 className="text-xl font-semibold mb-4" style={{fontFamily:'Space Grotesk'}}>Usuarios</h2>
+      <div className="flex gap-2 mb-4">
+        {['', 'advertiser', 'creator', 'fan'].map(r => (
+          <Button key={r} variant={roleFilter === r ? 'default' : 'outline'} size="sm" onClick={() => setRoleFilter(r)}>
+            {r || 'Todos'}
+          </Button>
+        ))}
       </div>
       
       {loading ? (
@@ -750,7 +775,7 @@ function AdminUsersEnhanced() {
                     <div className="flex items-center gap-2">
                       {u.profile_photo_url && (
                         <img src={u.profile_photo_url.startsWith('/') ? `${window.location.origin}${u.profile_photo_url}` : u.profile_photo_url} 
-                             className="w-8 h-8 rounded-full object-cover" alt="" />
+                            className="w-8 h-8 rounded-full object-cover" alt="" />
                       )}
                       <p className="font-medium">{u.name}</p>
                       <span className="text-xs px-2 py-0.5 rounded bg-[hsl(var(--surface-3))]">{u.role}</span>
@@ -800,16 +825,15 @@ function AdminUsersEnhanced() {
 export default function AdminDashboard() {
   const [stats, setStats] = useState(null);
   
-  const load = useCallback(() => { 
-    adminAPI.stats().then(res => setStats(res.data)).catch(() => {}); 
+  const load = useCallback(() => {
+    adminAPI.stats().then(res => setStats(res.data)).catch(() => {});
   }, []);
   
   useEffect(() => { load(); }, [load]);
   
   return (
-    <div className="flex min-h-screen bg-background">
+    <div className="flex min-h-screen bg-[hsl(var(--background))]">
       <Sidebar stats={stats} />
-      
       <div className="flex-1 p-6">
         <Routes>
           <Route index element={<DashboardHome stats={stats} refresh={load} />} />
@@ -865,4 +889,3 @@ export default function AdminDashboard() {
     </div>
   );
 }
-
