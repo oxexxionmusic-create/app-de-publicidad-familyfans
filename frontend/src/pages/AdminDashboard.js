@@ -12,7 +12,7 @@ import { toast } from 'sonner';
 import { API_BASE } from '@/lib/api';
 import {
   LayoutDashboard, Users, DollarSign, Megaphone, FileCheck, CreditCard, ShieldCheck, Music, Settings, List,
-  CheckCircle2, XCircle, Clock, LogOut, Zap, ChevronRight, Eye, TrendingUp, AlertCircle, RefreshCw, ExternalLink, Search
+  CheckCircle2, XCircle, Clock, LogOut, Zap, ChevronRight, Eye, TrendingUp, AlertCircle, RefreshCw, ExternalLink, Search, Video
 } from 'lucide-react';
 
 function StatusBadge({ status }) {
@@ -63,53 +63,38 @@ function Sidebar({ stats }) {
   ];
 
   return (
-    <div className="w-64 bg-[hsl(var(--surface-2))] border-r border-border/50 p-4 flex flex-col h-screen">
-      <div className="flex items-center gap-2 mb-6">
-        <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center">
-          <Zap className="w-5 h-5 text-primary-foreground" />
-        </div>
-        <div>
-          <p className="font-semibold text-sm" style={{fontFamily:'Space Grotesk'}}>Family Fans Mony</p>
-          <p className="text-xs text-muted-foreground">Admin Panel</p>
-        </div>
+    <div className="sidebar w-64 h-screen overflow-y-auto border-r border-border/50">
+      <div className="p-6">
+        <p className="font-semibold text-sm mb-6" style={{fontFamily:'Space Grotesk'}}>
+          Family Fans Mony<br/>Admin Panel
+        </p>
+        {links.map(l => {
+          const active = l.exact ? location.pathname === l.to : location.pathname.startsWith(l.to);
+          return (
+            <Link key={l.to} to={l.to} className={`sidebar-link ${active ? 'active' : ''}`} data-testid={`admin-sidebar-nav-${l.key}`}>
+              <l.icon className="w-4 h-4" />
+              {l.label}
+              {l.badge > 0 && <span className="badge">{l.badge}</span>}
+            </Link>
+          );
+        })}
+        <button onClick={() => { logout(); nav('/'); }} className="sidebar-link text-destructive mt-4">
+          <LogOut className="w-4 h-4" /> Cerrar Sesion
+        </button>
       </div>
-      
-      {links.map(l => {
-        const active = l.exact ? location.pathname === l.to : location.pathname.startsWith(l.to);
-        return (
-          <Link 
-            key={l.to} 
-            to={l.to} 
-            className={`sidebar-link ${active ? 'active' : ''}`}
-            data-testid={`admin-sidebar-nav-${l.key}`}
-          >
-            <l.icon className="w-4 h-4" />
-            {l.label}
-            {l.badge > 0 && <span className="ml-auto bg-primary text-primary-foreground text-xs px-2 py-0.5 rounded-full">{l.badge}</span>}
-          </Link>
-        );
-      })}
-      
-      <button 
-        onClick={() => { logout(); nav('/'); }} 
-        className="sidebar-link text-destructive mt-4"
-      >
-        <LogOut className="w-4 h-4" />
-        Cerrar Sesion
-      </button>
     </div>
   );
 }
 
 function KPICard({ label, value, icon: Icon, color = 'text-primary' }) {
   return (
-    <Card className="card-hover border-border/50">
+    <Card className="card-hover">
       <CardContent className="p-4">
-        <div className="flex items-center justify-between mb-2">
+        <div className="flex items-center justify-between">
           <p className="text-xs text-muted-foreground">{label}</p>
           <Icon className={`w-4 h-4 ${color}`} />
         </div>
-        <p className="text-2xl font-semibold tabular-nums" style={{fontFamily:'Space Grotesk'}}>
+        <p className="text-2xl font-semibold tabular-nums mt-2" style={{fontFamily:'Space Grotesk'}}>
           {typeof value === 'number' 
             ? (label.includes('$') || label.includes('Comision') || label.includes('Deposit') 
               ? `$${value.toLocaleString()}` 
@@ -122,7 +107,7 @@ function KPICard({ label, value, icon: Icon, color = 'text-primary' }) {
 }
 
 function DashboardHome({ stats, refresh }) {
-  if (!stats) return <div className="p-8 text-center">Cargando...</div>;
+  if (!stats) return <div>Cargando...</div>;
   
   return (
     <div className="space-y-6">
@@ -205,32 +190,20 @@ function AdminList({ title, fetchFn, approveFn, rejectFn, columns, type }) {
     const q = filter.toLowerCase();
     return JSON.stringify(item).toLowerCase().includes(q);
   });
-
+  
   return (
     <div>
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-xl font-semibold" style={{fontFamily:'Space Grotesk'}}>{title}</h2>
-        <Input 
-          placeholder="Buscar..." 
-          value={filter} 
-          onChange={e => setFilter(e.target.value)} 
-          className="w-48" 
-          data-testid={`admin-${type}-search-input`}
-        />
+        <Input placeholder="Buscar..." value={filter} onChange={e => setFilter(e.target.value)} className="w-48" data-testid={`admin-${type}-search-input`} />
       </div>
-      
-      <Button variant="outline" size="sm" onClick={load} className="mb-4">
-        <RefreshCw className="w-4 h-4 mr-1" /> Actualizar
-      </Button>
       
       {loading ? (
         <div className="space-y-2">
           {[1,2,3].map(i => <div key={i} className="h-16 rounded-lg bg-[hsl(var(--surface-2))] animate-pulse" />)}
         </div>
       ) : filtered.length === 0 ? (
-        <Card className="border-border/50">
-          <CardContent className="p-8 text-center text-muted-foreground">No hay elementos</CardContent>
-        </Card>
+        <Card className="border-border/50"><CardContent className="p-8 text-center text-muted-foreground">No hay elementos</CardContent></Card>
       ) : (
         <div className="space-y-2" data-testid={`admin-${type}-table`}>
           {filtered.map(item => (
@@ -257,6 +230,7 @@ function AdminList({ title, fetchFn, approveFn, rejectFn, columns, type }) {
                     )}
                     {item.user_email && <p className="text-xs text-muted-foreground mt-1">{item.user_email}</p>}
                     
+                    {/* Mostrar enlaces de Vocaroo y Referencia si existen */}
                     {item.vocaroo_link && (
                       <a href={item.vocaroo_link} target="_blank" rel="noopener noreferrer" 
                         className="text-xs text-primary hover:underline flex items-center gap-1 mt-1">
@@ -291,7 +265,7 @@ function AdminList({ title, fetchFn, approveFn, rejectFn, columns, type }) {
                     {item.video_url && (
                       <a href={item.video_url} target="_blank" rel="noopener noreferrer" 
                         className="text-xs text-primary hover:underline flex items-center gap-1 mt-1">
-                        <Eye className="w-3 h-3" /> Video
+                        <Video className="w-3 h-3" /> Video
                       </a>
                     )}
                     {item.audio_url && (
@@ -346,21 +320,25 @@ function AdminList({ title, fetchFn, approveFn, rejectFn, columns, type }) {
   );
 }
 
-function AdminCampaigns() {
+// Componente especializado para Campañas con búsqueda por ID
+function CampaignsList() {
   const [campaigns, setCampaigns] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchId, setSearchId] = useState('');
   
-  useEffect(() => {
+  const load = useCallback(() => {
+    setLoading(true);
     campaignsAPI.list().then(res => { setCampaigns(res.data); setLoading(false); }).catch(() => setLoading(false));
   }, []);
+  
+  useEffect(() => { load(); }, [load]);
   
   const handleCancel = async (id) => {
     if (!window.confirm('Cancelar esta campana?')) return;
     try {
       await campaignsAPI.cancel(id);
       toast.success('Campana cancelada');
-      campaignsAPI.list().then(res => setCampaigns(res.data));
+      load();
     } catch (err) { toast.error(err.response?.data?.detail || 'Error'); }
   };
   
@@ -369,17 +347,17 @@ function AdminCampaigns() {
     return c.id?.toLowerCase().includes(searchId.toLowerCase()) || 
            c.title?.toLowerCase().includes(searchId.toLowerCase());
   });
-
+  
   return (
     <div>
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-xl font-semibold" style={{fontFamily:'Space Grotesk'}}>Campanas</h2>
         <div className="relative w-64">
           <Search className="absolute left-3 top-3 w-4 h-4 text-muted-foreground" />
-          <Input
-            placeholder="Buscar por ID o titulo..."
-            value={searchId}
-            onChange={(e) => setSearchId(e.target.value)}
+          <Input 
+            placeholder="Buscar por ID o título..." 
+            value={searchId} 
+            onChange={(e) => setSearchId(e.target.value)} 
             className="pl-10"
           />
         </div>
@@ -390,16 +368,14 @@ function AdminCampaigns() {
           {[1,2,3].map(i => <div key={i} className="h-24 rounded-lg bg-[hsl(var(--surface-2))] animate-pulse" />)}
         </div>
       ) : filtered.length === 0 ? (
-        <Card className="border-border/50">
-          <CardContent className="p-8 text-center text-muted-foreground">Sin campanas</CardContent>
-        </Card>
+        <Card className="border-border/50"><CardContent className="p-8 text-center text-muted-foreground">Sin campanas</CardContent></Card>
       ) : (
         <div className="space-y-3">
           {filtered.map(c => (
             <Card key={c.id} className="border-border/50">
               <CardContent className="p-4">
                 <div className="flex items-start justify-between">
-                  <div className="flex-1">
+                  <div>
                     <div className="flex items-center gap-2 mb-1">
                       <p className="font-semibold">{c.title}</p>
                       <StatusBadge status={c.status} />
@@ -409,43 +385,156 @@ function AdminCampaigns() {
                       <span>Presupuesto: <b className="text-foreground">${c.budget}</b></span>
                       <span>Restante: <b className="text-foreground">${c.budget_remaining}</b></span>
                       <span>Videos: {c.videos_completed}/{c.videos_requested}</span>
-                      <span>ID: <b className="font-mono">{c.id}</b></span>
+                      <span>Pago/video: ${c.payment_per_video}</span>
                     </div>
                     <div className="flex items-center gap-2 mt-1 text-xs text-muted-foreground">
-                      <span>{c.niche}</span>
-                      <span>·</span>
-                      <span>{c.region}</span>
-                      <span>·</span>
-                      <span>{(c.social_networks || []).join(', ')}</span>
+                      <span>{c.niche}</span> · <span>{c.region}</span> · <span>{(c.social_networks||[]).join(', ')}</span>
                     </div>
                     
-                    {/* MOSTRAR ENLACES DE VOCAROO Y REFERENCIA */}
+                    {/* Mostrar enlaces de Vocaroo y Referencia */}
                     {c.vocaroo_link && (
-                      <div className="mt-2 p-2 rounded bg-[hsl(var(--surface-2))]">
-                        <p className="text-xs font-medium flex items-center gap-1 mb-1">
-                          <Music className="w-3 h-3 text-primary" /> Instrucciones de Audio (Vocaroo):
-                        </p>
+                      <div className="mt-2 text-xs">
                         <a href={c.vocaroo_link} target="_blank" rel="noopener noreferrer" 
-                          className="text-xs text-primary hover:underline break-all">
-                          {c.vocaroo_link}
+                          className="text-primary hover:underline flex items-center gap-1">
+                          <Music className="w-3 h-3" /> Audio de instrucciones (Vocaroo)
                         </a>
                       </div>
                     )}
                     {c.reference_link && (
-                      <div className="mt-1">
+                      <div className="text-xs">
                         <a href={c.reference_link} target="_blank" rel="noopener noreferrer" 
-                          className="text-xs text-primary hover:underline flex items-center gap-1">
-                          <ExternalLink className="w-3 h-3" /> Enlace de referencia: {c.reference_link}
+                          className="text-primary hover:underline flex items-center gap-1">
+                          <ExternalLink className="w-3 h-3" /> Enlace de referencia
                         </a>
                       </div>
                     )}
                   </div>
-                  
                   {c.status === 'active' && (
-                    <Button size="sm" variant="destructive" onClick={() => handleCancel(c.id)}>
-                      Cancelar
-                    </Button>
+                    <Button size="sm" variant="destructive" onClick={() => handleCancel(c.id)}>Cancelar</Button>
                   )}
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Componente especializado para Entregables con búsqueda por ID de Campaña
+function DeliverablesList() {
+  const [deliverables, setDeliverables] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [searchCampaignId, setSearchCampaignId] = useState('');
+  
+  const load = useCallback(() => {
+    setLoading(true);
+    deliverablesAPI.list().then(res => { setDeliverables(res.data); setLoading(false); }).catch(() => setLoading(false));
+  }, []);
+  
+  useEffect(() => { load(); }, [load]);
+  
+  const handleApprove = async (id) => {
+    try {
+      await deliverablesAPI.approve(id);
+      toast.success('Aprobado exitosamente');
+      load();
+    } catch (err) { toast.error(err.response?.data?.detail || 'Error'); }
+  };
+  
+  const handleReject = async (id) => {
+    const note = prompt('Motivo del rechazo (opcional):') || '';
+    try {
+      await deliverablesAPI.reject(id, note);
+      toast.success('Rechazado');
+      load();
+    } catch (err) { toast.error(err.response?.data?.detail || 'Error'); }
+  };
+  
+  const filtered = deliverables.filter(d => {
+    if (!searchCampaignId) return true;
+    return d.campaign_id?.toLowerCase().includes(searchCampaignId.toLowerCase());
+  });
+  
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-4">
+        <h2 className="text-xl font-semibold" style={{fontFamily:'Space Grotesk'}}>Entregables</h2>
+        <div className="relative w-64">
+          <Search className="absolute left-3 top-3 w-4 h-4 text-muted-foreground" />
+          <Input 
+            placeholder="Buscar por ID de Campaña..." 
+            value={searchCampaignId} 
+            onChange={(e) => setSearchCampaignId(e.target.value)} 
+            className="pl-10"
+          />
+        </div>
+      </div>
+      
+      {loading ? (
+        <div className="space-y-2">
+          {[1,2,3].map(i => <div key={i} className="h-16 rounded-lg bg-[hsl(var(--surface-2))] animate-pulse" />)}
+        </div>
+      ) : filtered.length === 0 ? (
+        <Card className="border-border/50"><CardContent className="p-8 text-center text-muted-foreground">No hay elementos</CardContent></Card>
+      ) : (
+        <div className="space-y-2" data-testid="admin-deliverables-table">
+          {filtered.map(item => (
+            <Card key={item.id} className="border-border/50">
+              <CardContent className="p-4">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2 mb-1">
+                      <p className="font-medium text-sm">{item.creator_name}</p>
+                      <StatusBadge status={item.status} />
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      ID Campaña: {item.campaign_id || 'N/A'} · {new Date(item.created_at).toLocaleDateString('es-ES')}
+                    </p>
+                    {item.amount !== undefined && (
+                      <p className={`text-sm font-semibold tabular-nums mt-1 ${item.amount >= 0 ? 'text-[hsl(152,58%,44%)]' : 'text-[hsl(0,72%,52%)]'}`}>
+                        ${item.amount}
+                      </p>
+                    )}
+                    {item.user_email && <p className="text-xs text-muted-foreground mt-1">{item.user_email}</p>}
+                    {item.video_url && (
+                      <a href={item.video_url} target="_blank" rel="noopener noreferrer" 
+                        className="text-xs text-primary hover:underline flex items-center gap-1 mt-1">
+                        <Video className="w-3 h-3" /> Ver video
+                      </a>
+                    )}
+                  </div>
+                  
+                  <div className="flex flex-col items-end gap-2">
+                    {item.status === 'pending' && (
+                      <div className="flex items-center gap-2" data-testid="admin-deliverables-row-actions">
+                        <Button size="sm" onClick={() => handleApprove(item.id)} data-testid="admin-deliverables-approve-button">
+                          <CheckCircle2 className="w-4 h-4 mr-1" /> Aprobar
+                        </Button>
+                        <Button size="sm" variant="destructive" onClick={() => handleReject(item.id)}>
+                          <XCircle className="w-4 h-4 mr-1" /> Rechazar
+                        </Button>
+                      </div>
+                    )}
+                    {item.status === 'approved' && item.final_payment_released === false && (
+                      <div className="text-right">
+                        <p className="text-xs text-muted-foreground">40% liberado · 60% retenido</p>
+                        {item.permanence_end && (
+                          <p className="text-xs text-muted-foreground">Permanencia hasta: {new Date(item.permanence_end).toLocaleDateString('es-ES')}</p>
+                        )}
+                        <Button size="sm" variant="outline" onClick={async () => {
+                          try {
+                            await deliverableActionsAPI.releaseFinal(item.id);
+                            toast.success('Pago final liberado');
+                            load();
+                          } catch(e) { toast.error(e.response?.data?.detail || 'Error'); }
+                        }}>
+                          Liberar 60%
+                        </Button>
+                      </div>
+                    )}
+                  </div>
                 </div>
               </CardContent>
             </Card>
@@ -477,7 +566,7 @@ function AdminUsers() {
       load();
     } catch (err) { toast.error('Error'); }
   };
-
+  
   return (
     <div>
       <h2 className="text-xl font-semibold mb-4" style={{fontFamily:'Space Grotesk'}}>Usuarios</h2>
@@ -503,7 +592,7 @@ function AdminUsers() {
                     <div className="flex items-center gap-2">
                       {u.profile_photo_url && (
                         <img src={u.profile_photo_url.startsWith('/') ? `${window.location.origin}${u.profile_photo_url}` : u.profile_photo_url} 
-                          className="w-8 h-8 rounded-full object-cover" alt="" />
+                            className="w-8 h-8 rounded-full object-cover" alt="" />
                       )}
                       <p className="font-medium">{u.name}</p>
                       <span className="text-xs px-2 py-0.5 rounded bg-[hsl(var(--surface-3))]">{u.role}</span>
@@ -541,7 +630,7 @@ function AdminTransactions() {
   useEffect(() => {
     transactionsAPI.list().then(res => { setTxns(res.data); setLoading(false); }).catch(() => setLoading(false));
   }, []);
-
+  
   return (
     <div>
       <h2 className="text-xl font-semibold mb-4" style={{fontFamily:'Space Grotesk'}}>Transacciones</h2>
@@ -550,9 +639,7 @@ function AdminTransactions() {
           {[1,2,3].map(i => <div key={i} className="h-12 rounded-lg bg-[hsl(var(--surface-2))] animate-pulse" />)}
         </div>
       ) : txns.length === 0 ? (
-        <Card className="border-border/50">
-          <CardContent className="p-8 text-center text-muted-foreground">Sin transacciones</CardContent>
-        </Card>
+        <Card className="border-border/50"><CardContent className="p-8 text-center text-muted-foreground">Sin transacciones</CardContent></Card>
       ) : (
         <div className="space-y-1">
           {txns.map(t => (
@@ -592,16 +679,14 @@ function AdminSettings() {
     setSaving(false);
   };
   
-  if (loading) return <div className="p-8 text-center">Cargando...</div>;
-
+  if (loading) return <div>Cargando...</div>;
+  
   return (
-    <div className="space-y-6">
-      <h2 className="text-xl font-semibold" style={{fontFamily:'Space Grotesk'}}>Configuracion de Pagos</h2>
+    <div className="space-y-4">
+      <h2 className="text-xl font-semibold mb-4" style={{fontFamily:'Space Grotesk'}}>Configuracion de Pagos</h2>
       
       <Card className="mb-4">
-        <CardHeader>
-          <CardTitle className="text-base" style={{fontFamily:'Space Grotesk'}}>Wallet Criptomonedas</CardTitle>
-        </CardHeader>
+        <CardHeader><CardTitle className="text-base" style={{fontFamily:'Space Grotesk'}}>Wallet Criptomonedas</CardTitle></CardHeader>
         <CardContent className="space-y-4">
           <div>
             <Label>Direccion Wallet</Label>
@@ -621,9 +706,7 @@ function AdminSettings() {
       </Card>
       
       <Card className="mb-4">
-        <CardHeader>
-          <CardTitle className="text-base" style={{fontFamily:'Space Grotesk'}}>Datos Bancarios</CardTitle>
-        </CardHeader>
+        <CardHeader><CardTitle className="text-base" style={{fontFamily:'Space Grotesk'}}>Datos Bancarios</CardTitle></CardHeader>
         <CardContent className="space-y-4">
           <div>
             <Label>Nombre del Banco</Label>
@@ -663,11 +746,11 @@ function AdminWallet() {
     adminWalletAPI.get().then(res => { setData(res.data); setLoading(false); }).catch(() => setLoading(false));
   }, []);
   
-  if (loading) return <div className="p-8 text-center">Cargando...</div>;
-
+  if (loading) return <div>Cargando...</div>;
+  
   return (
-    <div className="space-y-6">
-      <h2 className="text-xl font-semibold" style={{fontFamily:'Space Grotesk'}}>Billetera de la Plataforma</h2>
+    <div className="space-y-4">
+      <h2 className="text-xl font-semibold mb-4" style={{fontFamily:'Space Grotesk'}}>Billetera de la Plataforma</h2>
       
       <Card className="mb-4">
         <CardContent className="p-6">
@@ -679,9 +762,7 @@ function AdminWallet() {
       </Card>
       
       <Card>
-        <CardHeader>
-          <CardTitle className="text-base" style={{fontFamily:'Space Grotesk'}}>Historial de Comisiones</CardTitle>
-        </CardHeader>
+        <CardHeader><CardTitle className="text-base" style={{fontFamily:'Space Grotesk'}}>Historial de Comisiones</CardTitle></CardHeader>
         <CardContent className="space-y-2">
           {(data?.transactions || []).map(t => (
             <div key={t.id} className="flex items-center justify-between p-3 rounded-lg bg-[hsl(var(--surface-2))]">
@@ -722,10 +803,10 @@ function AdminRankingBoards() {
       load();
     } catch (err) { toast.error('Error'); }
   };
-
+  
   return (
-    <div className="space-y-6">
-      <h2 className="text-xl font-semibold" style={{fontFamily:'Space Grotesk'}}>Tableros de Ranking Personalizados</h2>
+    <div className="space-y-4">
+      <h2 className="text-xl font-semibold mb-4" style={{fontFamily:'Space Grotesk'}}>Tableros de Ranking Personalizados</h2>
       
       <Card className="mb-4">
         <CardContent className="p-4 space-y-4">
@@ -743,9 +824,7 @@ function AdminRankingBoards() {
           {[1,2,3].map(i => <div key={i} className="h-24 rounded-lg bg-[hsl(var(--surface-2))] animate-pulse" />)}
         </div>
       ) : boards.length === 0 ? (
-        <Card className="border-border/50">
-          <CardContent className="p-8 text-center text-muted-foreground">Sin tableros personalizados</CardContent>
-        </Card>
+        <Card className="border-border/50"><CardContent className="p-8 text-center text-muted-foreground">Sin tableros personalizados</CardContent></Card>
       ) : (
         <div className="space-y-3">
           {boards.map(b => (
@@ -793,7 +872,7 @@ function AdminUsersEnhanced() {
     try { await adminLevelAPI.setLevel(userId, fd); toast.success(`Nivel actualizado a ${level}`); load(); }
     catch { toast.error('Error'); }
   };
-
+  
   return (
     <div>
       <h2 className="text-xl font-semibold mb-4" style={{fontFamily:'Space Grotesk'}}>Usuarios</h2>
@@ -819,7 +898,7 @@ function AdminUsersEnhanced() {
                     <div className="flex items-center gap-2">
                       {u.profile_photo_url && (
                         <img src={u.profile_photo_url.startsWith('/') ? `${window.location.origin}${u.profile_photo_url}` : u.profile_photo_url} 
-                          className="w-8 h-8 rounded-full object-cover" alt="" />
+                            className="w-8 h-8 rounded-full object-cover" alt="" />
                       )}
                       <p className="font-medium">{u.name}</p>
                       <span className="text-xs px-2 py-0.5 rounded bg-[hsl(var(--surface-3))]">{u.role}</span>
@@ -874,54 +953,51 @@ export default function AdminDashboard() {
   }, []);
   
   useEffect(() => { load(); }, [load]);
-
+  
   return (
-    <div className="flex h-screen bg-background">
+    <div className="flex min-h-screen bg-background">
       <Sidebar stats={stats} />
-      <div className="flex-1 p-6 overflow-auto">
+      <div className="flex-1 p-6">
         <Routes>
           <Route index element={<DashboardHome stats={stats} refresh={load} />} />
           
           <Route path="deposits" element={
             <AdminList title="Depositos" fetchFn={depositsAPI.list} approveFn={depositsAPI.approve} rejectFn={depositsAPI.reject} type="deposits"
-              columns={[{key:'user_email'}, {render: i => i.method}, {render: i => `$${i.amount}`}]} />
+             columns={[{key:'user_email'}, {render: i => i.method}, {render: i => `$${i.amount}`}]} />
           } />
           
-          <Route path="campaigns" element={<AdminCampaigns />} />
+          <Route path="campaigns" element={<CampaignsList />} />
           
-          <Route path="deliverables" element={
-            <AdminList title="Entregables" fetchFn={deliverablesAPI.list} approveFn={deliverablesAPI.approve} rejectFn={deliverablesAPI.reject} type="deliverables"
-              columns={[{key:'creator_name'}, {render: i => i.video_url ? 'Con video' : 'Sin video'}]} />
-          } />
+          <Route path="deliverables" element={<DeliverablesList />} />
           
           <Route path="withdrawals" element={
             <AdminList title="Retiros" fetchFn={withdrawalsAPI.list} approveFn={withdrawalsAPI.approve} rejectFn={withdrawalsAPI.reject} type="withdrawals"
-              columns={[{key:'user_name'}, {key:'user_email'}, {render: i => `$${i.amount} · ${i.method}`}]} />
+             columns={[{key:'user_name'}, {key:'user_email'}, {render: i => `$${i.amount} · ${i.method}`}]} />
           } />
           
           <Route path="kyc" element={
             <AdminList title="Verificaciones KYC" fetchFn={kycAPI.list} approveFn={kycAPI.approve} rejectFn={kycAPI.reject} type="kyc"
-              columns={[{key:'user_email'}]} />
+             columns={[{key:'user_email'}]} />
           } />
           
           <Route path="financing" element={
             <AdminList title="Financiamiento Musical" fetchFn={musicFinancingAPI.list} approveFn={(id) => musicFinancingAPI.approve(id, '', 0)} rejectFn={(id, note) => musicFinancingAPI.reject(id, note)} type="financing"
-              columns={[{key:'title'}, {key:'creator_email'}, {render: i => i.amount_requested ? `$${i.amount_requested}` : ''}]} />
+             columns={[{key:'title'}, {key:'creator_email'}, {render: i => i.amount_requested ? `$${i.amount_requested}` : ''}]} />
           } />
           
           <Route path="curators" element={
             <AdminList title="Solicitudes de Curadores" fetchFn={curatorAPI.requests} approveFn={curatorAPI.approveRequest} rejectFn={curatorAPI.rejectRequest} type="curators"
-              columns={[{key:'playlist_name'}, {key:'user_email'}, {render: i => `${i.song_count} canciones · ${i.listens_count} escuchas · $${i.calculated_payout}`}]} />
+             columns={[{key:'playlist_name'}, {key:'user_email'}, {render: i => `${i.song_count} canciones · ${i.listens_count} escuchas · $${i.calculated_payout}`}]} />
           } />
           
           <Route path="microtasks" element={
             <AdminList title="Micro-tareas (Escuchar Musica)" fetchFn={microTasksAPI.list} approveFn={microTasksAPI.approve} rejectFn={microTasksAPI.reject} type="microtasks"
-              columns={[{key:'user_email'}, {render: i => `${i.songs_listened} canciones · $${i.calculated_payout}`}]} />
+             columns={[{key:'user_email'}, {render: i => `${i.songs_listened} canciones · $${i.calculated_payout}`}]} />
           } />
           
           <Route path="levels" element={
             <AdminList title="Solicitudes de Nivel" fetchFn={levelRequestsAPI.list} approveFn={levelRequestsAPI.approve} rejectFn={levelRequestsAPI.reject} type="levels"
-              columns={[{key:'user_name'}, {render: i => `${i.current_level} → ${i.requested_level}`}, {key:'justification'}]} />
+             columns={[{key:'user_name'}, {render: i => `${i.current_level} → ${i.requested_level}`}, {key:'justification'}]} />
           } />
           
           <Route path="wallet" element={<AdminWallet />} />
