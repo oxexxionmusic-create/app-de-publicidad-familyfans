@@ -119,12 +119,14 @@ async def register(req: RegisterReq):
     existing = await db.users.find_one({"email": req.email})
     if existing:
         raise HTTPException(400, "Email ya registrado")
+    
     ref_code = ''.join(random.choices(string.ascii_uppercase + string.digits, k=8))
     referred_by = None
     if req.referral_code:
         referrer = await db.users.find_one({"referral_code": req.referral_code})
         if referrer:
             referred_by = str(referrer["_id"])
+    
     user = {
         "email": req.email, "password_hash": hash_password(req.password), "role": req.role,
         "name": req.name, "balance": 0.0, "kyc_status": "none", "is_top10": False,
@@ -171,12 +173,13 @@ async def save_creator_profile(
     screenshot_url = ""
     if metrics_screenshot:
         screenshot_url = await save_upload(metrics_screenshot)
+    
     profile = {
         "content_type": content_type, "region": region, "gender": gender, "bio": bio,
         "creator_level": creator_level, "artist_level": artist_level, "niche": niche,
         "avg_views": avg_views, "followers": followers,
         "social_links": {"youtube": youtube_url, "tiktok": tiktok_url, "instagram": instagram_url,
-            "facebook": facebook_url, "spotify": spotify_url, "apple_music": apple_music_url},
+                        "facebook": facebook_url, "spotify": spotify_url, "apple_music": apple_music_url},
         "metrics_screenshot": screenshot_url, "updated_at": now_iso(),
     }
     await db.users.update_one({"_id": ObjectId(user["sub"])}, {"$set": {"creator_profile": profile, "phone": phone, "country": country, "gender": gender}})
@@ -242,16 +245,36 @@ class CampaignCreate(BaseModel):
     region: str = ""; gender_preference: str = "any"; videos_requested: int = 1; social_networks: List[str] = []
     content_duration: str = "1_month"; bonus_threshold_views: int = 0; bonus_amount: float = 0
     influencer_level: str = "any"; external_link: str = ""; max_videos_per_creator: int = 1
+    vocaroo_link: str = ""
+    reference_link: str = ""
 
 @api.post("/campaigns")
 async def create_campaign(req: CampaignCreate, user=Depends(require_advertiser)):
     u = await db.users.find_one({"_id": ObjectId(user["sub"])})
     if u["balance"] < req.budget: raise HTTPException(400, f"Saldo insuficiente. Tienes ${u['balance']}, necesitas ${req.budget}")
+    
     region_warning = ""
     if req.region:
         region_count = await db.users.count_documents({"role": "creator", "creator_profile.region": req.region})
         if region_count == 0: region_warning = f"No hay creadores en {req.region}. La campaña se propondrá a creadores que cumplan el resto de requisitos."
-    campaign = {"advertiser_id": user["sub"], "advertiser_name": u.get("name", ""), "title": req.title, "description": req.description, "budget": req.budget, "budget_remaining": req.budget, "payment_per_video": req.payment_per_video, "niche": req.niche, "region": req.region, "gender_preference": req.gender_preference, "videos_requested": req.videos_requested, "videos_completed": 0, "social_networks": req.social_networks, "content_duration": req.content_duration, "bonus_threshold_views": req.bonus_threshold_views, "bonus_amount": req.bonus_amount, "influencer_level": req.influencer_level, "external_link": req.external_link, "max_videos_per_creator": req.max_videos_per_creator, "audio_url": "", "photo_url": "", "region_warning": region_warning, "status": "active", "created_at": now_iso()}
+    
+    # --- GENERAR ID ÚNICO PARA LA CAMPAÑA ---
+    campaign_unique_id = f"CAMP-{uuid.uuid4().hex[:8].upper()}"
+    
+    campaign = {
+        "advertiser_id": user["sub"], "advertiser_name": u.get("name", ""), "title": req.title,
+        "description": req.description, "budget": req.budget, "budget_remaining": req.budget,
+        "payment_per_video": req.payment_per_video, "niche": req.niche, "region": req.region,
+        "gender_preference": req.gender_preference, "videos_requested": req.videos_requested,
+        "videos_completed": 0, "social_networks": req.social_networks, "content_duration": req.content_duration,
+        "bonus_threshold_views": req.bonus_threshold_views, "bonus_amount": req.bonus_amount,
+        "influencer_level": req.influencer_level, "external_link": req.external_link,
+        "max_videos_per_creator": req.max_videos_per_creator,
+        "audio_url": "", "photo_url": "", "region_warning": region_warning,
+        "vocaroo_link": req.vocaroo_link, "reference_link": req.reference_link,
+        "campaign_unique_id": campaign_unique_id,  # <-- NUEVO CAMPO
+        "status": "active", "created_at": now_iso(),
+    }
     await db.users.update_one({"_id": ObjectId(user["sub"])}, {"$inc": {"balance": -req.budget}})
     await db.transactions.insert_one({"user_id": user["sub"], "type": "campaign_escrow", "amount": -req.budget, "reference_id": "", "description": f"Reserva para campaña: {req.title}", "created_at": now_iso()})
     result = await db.campaigns.insert_one(campaign)
@@ -376,7 +399,22 @@ async def submit_deliverable(application_id: str = Form(...), video_url: str = F
     if existing_del: raise HTTPException(400, "Ya enviaste un entregable para esta aplicación")
     screenshot_url = ""
     if screenshot: screenshot_url = await save_upload(screenshot)
-    deliverable = {"application_id": application_id, "campaign_id": a["campaign_id"], "creator_id": user["sub"], "creator_name": a.get("creator_name", ""), "video_url": video_url, "platform_links": platform_links, "platforms_count": platforms_count, "screenshot_url": screenshot_url, "notes": notes, "status": "pending", "created_at": now_iso(), "reviewed_by": None, "reviewed_at": None, "initial_payment_released": False, "final_payment_released": False, "bonus_claimed": False, "permanence_start": None, "permanence_end": None}
+    
+    # Obtener el campaign_unique_id de la campaña
+    campaign = await db.campaigns.find_one({"_id": ObjectId(a["campaign_id"])})
+    campaign_unique_id = campaign.get("campaign_unique_id", "") if campaign else ""
+    
+    deliverable = {
+        "application_id": application_id, "campaign_id": a["campaign_id"],
+        "campaign_unique_id": campaign_unique_id,  # <-- AGREGAR ID DE CAMPAÑA
+        "creator_id": user["sub"], "creator_name": a.get("creator_name", ""),
+        "video_url": video_url, "platform_links": platform_links,
+        "platforms_count": platforms_count, "screenshot_url": screenshot_url,
+        "notes": notes, "status": "pending", "created_at": now_iso(),
+        "reviewed_by": None, "reviewed_at": None, "initial_payment_released": False,
+        "final_payment_released": False, "bonus_claimed": False,
+        "permanence_start": None, "permanence_end": None
+    }
     result = await db.deliverables.insert_one(deliverable)
     deliverable["_id"] = result.inserted_id
     return serialize_doc(deliverable)
@@ -392,24 +430,6 @@ async def list_deliverables(campaign_id: str = Query(None), user=Depends(get_cur
     if campaign_id: query["campaign_id"] = campaign_id
     deliverables = await db.deliverables.find(query).sort("created_at", -1).to_list(500)
     return [serialize_doc(d) for d in deliverables]
-
-# === NUEVO ENDPOINT: Buscar entregables por ID de campaña (Admin) ===
-@api.get("/admin/deliverables/search/{campaign_id}")
-async def search_deliverables_by_campaign(campaign_id: str, user=Depends(require_admin)):
-    """
-    Busca todos los entregables de una campaña específica por su ID
-    """
-    deliverables = await db.deliverables.find({"campaign_id": campaign_id}).sort("created_at", -1).to_list(500)
-    
-    # Obtener información de la campaña para mostrar junto con los entregables
-    campaign = await db.campaigns.find_one({"_id": ObjectId(campaign_id)})
-    
-    result = {
-        "campaign": serialize_doc(campaign) if campaign else None,
-        "deliverables": [serialize_doc(d) for d in deliverables],
-        "total": len(deliverables)
-    }
-    return result
 
 @api.put("/admin/deliverables/{del_id}/approve")
 async def approve_deliverable(del_id: str, user=Depends(require_admin)):
@@ -432,6 +452,7 @@ async def approve_deliverable(del_id: str, user=Depends(require_admin)):
     await db.deliverables.update_one({"_id": ObjectId(del_id), "status": "pending"}, {"$set": {"status": "approved", "reviewed_by": user["sub"], "reviewed_at": now_iso(), "payout": creator_total, "commission": commission, "initial_payment_released": True, "initial_payout": initial_payout, "held_payout": held_payout, "final_payment_released": False, "bonus_claimed": False, "permanence_start": perm_start, "permanence_end": perm_end}})
     await db.users.update_one({"_id": ObjectId(d["creator_id"])}, {"$inc": {"balance": initial_payout}})
     await db.campaigns.update_one({"_id": ObjectId(d["campaign_id"])}, {"$inc": {"budget_remaining": -payment, "videos_completed": 1}})
+    # --- CORRECCIÓN: f-strings sin espacio ---
     await db.transactions.insert_one({"user_id": d["creator_id"], "type": "campaign_payment_initial", "amount": initial_payout, "reference_id": del_id, "description": f"Pago inicial 40% por campaña (comisión {int(commission_rate*100)}%)", "created_at": now_iso()})
     # --- CORRECCIÓN: __platform__ con doble guion bajo ---
     await db.transactions.insert_one({"user_id": "__platform__", "type": "platform_commission", "amount": commission, "reference_id": del_id, "description": f"Comisión {int(commission_rate*100)}% del creador {d.get('creator_name','')}", "created_at": now_iso()})
@@ -687,7 +708,15 @@ async def admin_stats(user=Depends(require_admin)):
     approved_deposits = await db.deposits.find({"status": "approved"}).to_list(10000)
     total_deposited = sum(d["amount"] for d in approved_deposits)
     active_campaigns = await db.campaigns.count_documents({"status": "active"})
-    return {"total_users": total_users, "total_creators": total_creators, "total_advertisers": total_advertisers, "total_fans": total_fans, "pending_deposits": pending_deposits, "pending_kyc": pending_kyc, "pending_deliverables": pending_deliverables, "pending_withdrawals": pending_withdrawals, "pending_financing": pending_financing, "pending_curator": pending_curator, "pending_micro_tasks": pending_micro_tasks, "pending_level_requests": pending_level_requests, "pending_final_release": pending_final_release, "total_commissions": round(total_commissions, 2), "total_deposited": round(total_deposited, 2), "active_campaigns": active_campaigns}
+    return {
+        "total_users": total_users, "total_creators": total_creators, "total_advertisers": total_advertisers,
+        "total_fans": total_fans, "pending_deposits": pending_deposits, "pending_kyc": pending_kyc,
+        "pending_deliverables": pending_deliverables, "pending_withdrawals": pending_withdrawals,
+        "pending_financing": pending_financing, "pending_curator": pending_curator,
+        "pending_micro_tasks": pending_micro_tasks, "pending_level_requests": pending_level_requests,
+        "pending_final_release": pending_final_release, "total_commissions": round(total_commissions, 2),
+        "total_deposited": round(total_deposited, 2), "active_campaigns": active_campaigns
+    }
 
 # ===================== ADMIN USERS =====================
 @api.get("/admin/users")
@@ -732,7 +761,16 @@ async def get_creator_public(creator_id: str):
 async def get_payment_info(user=Depends(get_current_user)):
     s = await db.platform_settings.find_one({})
     if not s: return {}
-    return {"crypto_wallet_address": s.get("crypto_wallet_address", ""), "crypto_network": s.get("crypto_network", ""), "crypto_currency": s.get("crypto_currency", ""), "bank_name": s.get("bank_name", ""), "bank_account_holder": s.get("bank_account_holder", ""), "bank_account_number": s.get("bank_account_number", ""), "bank_details": s.get("bank_details", ""), "instructions": s.get("instructions", "")}
+    return {
+        "crypto_wallet_address": s.get("crypto_wallet_address", ""),
+        "crypto_network": s.get("crypto_network", ""),
+        "crypto_currency": s.get("crypto_currency", ""),
+        "bank_name": s.get("bank_name", ""),
+        "bank_account_holder": s.get("bank_account_holder", ""),
+        "bank_account_number": s.get("bank_account_number", ""),
+        "bank_details": s.get("bank_details", ""),
+        "instructions": s.get("instructions", "")
+    }
 
 # ===================== SPOTIFY CURATORS =====================
 CURATOR_RATES = {(10, 1000): 9.0, (25, 1000): 22.0, (10, 500): 4.0, (5, 500): 2.0, (10, 100): 0.30}
@@ -902,7 +940,12 @@ async def get_referral_info(user=Depends(get_current_user)):
     referrals = await db.users.find({"referred_by": user["sub"]}).to_list(500)
     ref_txns = await db.transactions.find({"user_id": user["sub"], "type": "referral_commission"}).to_list(1000)
     total_ref_earnings = sum(t["amount"] for t in ref_txns)
-    return {"referral_code": referral_code, "referrals_count": len(referrals), "referrals": [{"name": r.get("name", ""), "email": r.get("email", ""), "created_at": r.get("created_at", "")} for r in referrals], "total_referral_earnings": round(total_ref_earnings, 4)}
+    return {
+        "referral_code": referral_code,
+        "referrals_count": len(referrals),
+        "referrals": [{"name": r.get("name", ""), "email": r.get("email", ""), "created_at": r.get("created_at", "")} for r in referrals],
+        "total_referral_earnings": round(total_ref_earnings, 4)
+    }
 
 # ===================== ADMIN: WALLET =====================
 @api.get("/admin/wallet")
