@@ -18,24 +18,8 @@ import {
 } from 'lucide-react';
 
 function StatusBadge({ status }) {
-  const map = { 
-    pending: 'status-badge-pending', 
-    approved: 'status-badge-approved', 
-    rejected: 'status-badge-rejected', 
-    active: 'status-badge-active', 
-    completed: 'status-badge-approved', 
-    cancelled: 'status-badge-rejected', 
-    accepted: 'status-badge-approved' 
-  };
-  const labels = { 
-    pending: 'Pendiente', 
-    approved: 'Aprobado', 
-    rejected: 'Rechazado', 
-    active: 'Activo', 
-    completed: 'Completado', 
-    cancelled: 'Cancelado', 
-    accepted: 'Aceptado' 
-  };
+  const map = { pending: 'status-badge-pending', approved: 'status-badge-approved', rejected: 'status-badge-rejected', active: 'status-badge-active', completed: 'status-badge-approved', cancelled: 'status-badge-rejected', accepted: 'status-badge-approved' };
+  const labels = { pending: 'Pendiente', approved: 'Aprobado', rejected: 'Rechazado', active: 'Activo', completed: 'Completado', cancelled: 'Cancelado', accepted: 'Aceptado' };
   return <span className={map[status] || 'status-badge-pending'}>{labels[status] || status}</span>;
 }
 
@@ -109,9 +93,7 @@ export default function AdvertiserDashboard() {
 
   const handleCreateCampaign = async (e) => {
     e.preventDefault();
-    if (!campForm.title || !campForm.budget || !campForm.payment_per_video) { 
-      toast.error('Completa los campos obligatorios'); return; 
-    }
+    if (!campForm.title || !campForm.budget || !campForm.payment_per_video) { toast.error('Completa los campos obligatorios'); return; }
     setCampLoading(true);
     try {
       await campaignsAPI.create({
@@ -137,27 +119,20 @@ export default function AdvertiserDashboard() {
   };
 
   const handleAcceptApp = async (id) => {
-    try { await applicationsAPI.accept(id); toast.success('Aplicacion aceptada'); load(); } 
-    catch (err) { toast.error(err.response?.data?.detail || 'Error'); }
+    try { await applicationsAPI.accept(id); toast.success('Aplicacion aceptada'); load(); } catch (err) { toast.error(err.response?.data?.detail || 'Error'); }
   };
-
   const handleRejectApp = async (id) => {
-    try { await applicationsAPI.reject(id); toast.success('Aplicacion rechazada'); load(); } 
-    catch (err) { toast.error(err.response?.data?.detail || 'Error'); }
+    try { await applicationsAPI.reject(id); toast.success('Aplicacion rechazada'); load(); } catch (err) { toast.error(err.response?.data?.detail || 'Error'); }
   };
-
   const handleCancelCampaign = async (id) => {
     if (!window.confirm('Cancelar campana? Se reembolsara el presupuesto no gastado.')) return;
-    try { await campaignsAPI.cancel(id); toast.success('Campana cancelada'); load(); } 
-    catch (err) { toast.error(err.response?.data?.detail || 'Error'); }
+    try { await campaignsAPI.cancel(id); toast.success('Campana cancelada'); load(); } catch (err) { toast.error(err.response?.data?.detail || 'Error'); }
   };
 
   const toggleNetwork = (net) => {
     setCampForm(prev => ({
       ...prev,
-      social_networks: prev.social_networks.includes(net) 
-        ? prev.social_networks.filter(n => n !== net) 
-        : [...prev.social_networks, net]
+      social_networks: prev.social_networks.includes(net) ? prev.social_networks.filter(n => n !== net) : [...prev.social_networks, net]
     }));
   };
 
@@ -257,6 +232,14 @@ export default function AdvertiserDashboard() {
                             <span>Videos: {c.videos_completed}/{c.videos_requested}</span>
                             <span>Pago/video: ${c.payment_per_video}</span>
                           </div>
+                          
+                          {/* --- MOSTRAR ID DE CAMPAÑA --- */}
+                          <div className="flex items-center gap-2 mt-2">
+                             <span className="text-xs bg-[hsl(var(--surface-3))] px-2 py-1 rounded font-mono">
+                                ID: {c.campaign_unique_id}
+                             </span>
+                          </div>
+
                           <div className="flex items-center gap-2 mt-1 text-xs text-muted-foreground">
                             <span>{c.niche}</span> <span>{c.region}</span> 
                             <span>{(c.social_networks||[]).join(', ')}</span>
@@ -264,16 +247,16 @@ export default function AdvertiserDashboard() {
                           {/* --- MOSTRAR ENLACES DE VOCAROO Y REFERENCIA --- */}
                           {c.vocaroo_link && (
                             <div className="mt-2 text-xs">
-                              <a href={c.vocaroo_link} target="_blank" rel="noopener noreferrer" 
-                                 className="text-primary hover:underline flex items-center gap-1">
+                              <a href={c.vocaroo_link} target="_blank" rel="noopener noreferrer"
+                                className="text-primary hover:underline flex items-center gap-1">
                                 <Music className="w-3 h-3" /> Audio de instrucciones (Vocaroo)
                               </a>
                             </div>
                           )}
                           {c.reference_link && (
                             <div className="text-xs">
-                              <a href={c.reference_link} target="_blank" rel="noopener noreferrer" 
-                                 className="text-primary hover:underline flex items-center gap-1">
+                              <a href={c.reference_link} target="_blank" rel="noopener noreferrer"
+                                className="text-primary hover:underline flex items-center gap-1">
                                 <ExternalLink className="w-3 h-3" /> Enlace de referencia
                               </a>
                             </div>
@@ -347,14 +330,14 @@ export default function AdvertiserDashboard() {
                       </div>
                       <p className="text-xs text-muted-foreground">{new Date(d.created_at).toLocaleDateString('es-ES')}</p>
                       {d.video_url && (
-                        <a href={d.video_url} target="_blank" rel="noopener noreferrer" 
-                           className="text-xs text-primary hover:underline flex items-center gap-1 mt-1">
+                        <a href={d.video_url} target="_blank" rel="noopener noreferrer"
+                          className="text-xs text-primary hover:underline flex items-center gap-1 mt-1">
                           <Eye className="w-3 h-3" /> Ver video
                         </a>
                       )}
                       {d.screenshot_url && (
-                        <a href={`${API_BASE.replace('/api','')}${d.screenshot_url}`} target="_blank" rel="noopener noreferrer" 
-                           className="text-xs text-primary hover:underline flex items-center gap-1 mt-1">
+                        <a href={`${API_BASE.replace('/api','')}${d.screenshot_url}`} target="_blank" rel="noopener noreferrer"
+                          className="text-xs text-primary hover:underline flex items-center gap-1 mt-1">
                           <Eye className="w-3 h-3" /> Ver captura
                         </a>
                       )}
@@ -422,8 +405,8 @@ export default function AdvertiserDashboard() {
           <form onSubmit={handleDeposit} className="space-y-4">
             <div>
               <Label>Monto (USD)</Label>
-              <Input type="number" step="0.01" min="1" value={depAmount} onChange={e => setDepAmount(e.target.value)} 
-                     placeholder="100.00" required data-testid="deposit-amount-input"/>
+              <Input type="number" step="0.01" min="1" value={depAmount} onChange={e => setDepAmount(e.target.value)}
+                placeholder="100.00" required data-testid="deposit-amount-input"/>
             </div>
             <div>
               <Label>Metodo de Pago</Label>
@@ -441,8 +424,8 @@ export default function AdvertiserDashboard() {
             </div>
             <div>
               <Label>Comprobante de Pago</Label>
-              <Input type="file" accept="image/*,.pdf" onChange={e => setDepProof(e.target.files[0])} 
-                     data-testid="deposit-proof-upload-input"/>
+              <Input type="file" accept="image/*,.pdf" onChange={e => setDepProof(e.target.files[0])}
+                data-testid="deposit-proof-upload-input"/>
               <p className="text-xs text-muted-foreground mt-1">Sube una captura o PDF del comprobante</p>
             </div>
             <Button type="submit" className="w-full" disabled={depLoading}>
@@ -464,8 +447,8 @@ export default function AdvertiserDashboard() {
               </div>
               <div>
                 <Label>Nicho</Label>
-                <Input value={campForm.niche} onChange={e => setCampForm({...campForm, niche: e.target.value})} 
-                       placeholder="humor, baile, musica..."/>
+                <Input value={campForm.niche} onChange={e => setCampForm({...campForm, niche: e.target.value})}
+                  placeholder="humor, baile, musica..."/>
               </div>
             </div>
             <div>
@@ -475,25 +458,25 @@ export default function AdvertiserDashboard() {
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
               <div>
                 <Label>Presupuesto Total ($) *</Label>
-                <Input type="number" step="0.01" min="1" value={campForm.budget} 
-                       onChange={e => setCampForm({...campForm, budget: e.target.value})} required/>
+                <Input type="number" step="0.01" min="1" value={campForm.budget}
+                  onChange={e => setCampForm({...campForm, budget: e.target.value})} required/>
               </div>
               <div>
                 <Label>Pago por Video ($) *</Label>
-                <Input type="number" step="0.01" min="0.01" value={campForm.payment_per_video} 
-                       onChange={e => setCampForm({...campForm, payment_per_video: e.target.value})} required/>
+                <Input type="number" step="0.01" min="0.01" value={campForm.payment_per_video}
+                  onChange={e => setCampForm({...campForm, payment_per_video: e.target.value})} required/>
               </div>
               <div>
                 <Label>Videos Solicitados</Label>
-                <Input type="number" min="1" value={campForm.videos_requested} 
-                       onChange={e => setCampForm({...campForm, videos_requested: e.target.value})}/>
+                <Input type="number" min="1" value={campForm.videos_requested}
+                  onChange={e => setCampForm({...campForm, videos_requested: e.target.value})}/>
               </div>
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <Label>Region</Label>
-                <Input value={campForm.region} onChange={e => setCampForm({...campForm, region: e.target.value})} 
-                       placeholder="LATAM, Mexico, Colombia..."/>
+                <Input value={campForm.region} onChange={e => setCampForm({...campForm, region: e.target.value})}
+                  placeholder="LATAM, Mexico, Colombia..."/>
               </div>
               <div>
                 <Label>Genero del Influencer</Label>
@@ -511,10 +494,10 @@ export default function AdvertiserDashboard() {
               <Label>Redes Sociales</Label>
               <div className="flex flex-wrap gap-2 mt-1">
                 {['tiktok', 'instagram', 'youtube', 'facebook'].map(net => (
-                  <button key={net} type="button" 
+                  <button key={net} type="button"
                     className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
-                      campForm.social_networks.includes(net) 
-                        ? 'bg-primary text-primary-foreground border-primary' 
+                      campForm.social_networks.includes(net)
+                        ? 'bg-primary text-primary-foreground border-primary'
                         : 'bg-[hsl(var(--surface-2))] border-border/50 hover:border-border'
                     }`}
                     onClick={() => toggleNetwork(net)}
@@ -553,32 +536,32 @@ export default function AdvertiserDashboard() {
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <Label>Bonus: Umbral de Vistas</Label>
-                <Input type="number" min="0" value={campForm.bonus_threshold_views} 
-                       onChange={e => setCampForm({...campForm, bonus_threshold_views: e.target.value})} placeholder="1000"/>
+                <Input type="number" min="0" value={campForm.bonus_threshold_views}
+                  onChange={e => setCampForm({...campForm, bonus_threshold_views: e.target.value})} placeholder="1000"/>
               </div>
               <div>
                 <Label>Bonus: Monto Extra ($)</Label>
-                <Input type="number" step="0.01" min="0" value={campForm.bonus_amount} 
-                       onChange={e => setCampForm({...campForm, bonus_amount: e.target.value})} placeholder="5.00"/>
+                <Input type="number" step="0.01" min="0" value={campForm.bonus_amount}
+                  onChange={e => setCampForm({...campForm, bonus_amount: e.target.value})} placeholder="5.00"/>
               </div>
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <Label>Enlace Externo (opcional)</Label>
-                <Input value={campForm.external_link} onChange={e => setCampForm({...campForm, external_link: e.target.value})} 
-                       placeholder="https://..."/>
+                <Input value={campForm.external_link} onChange={e => setCampForm({...campForm, external_link: e.target.value})}
+                  placeholder="https://..."/>
               </div>
               <div>
                 <Label>Max Videos por Creador</Label>
-                <Input type="number" min="1" value={campForm.max_videos_per_creator} 
-                       onChange={e => setCampForm({...campForm, max_videos_per_creator: e.target.value})}/>
+                <Input type="number" min="1" value={campForm.max_videos_per_creator}
+                  onChange={e => setCampForm({...campForm, max_videos_per_creator: e.target.value})}/>
               </div>
             </div>
-            
+
             {/* --- SECCIÓN MULTIMEDIA E INSTRUCCIONES (VOCAROO + REFERENCIA) --- */}
             <div className="border-t pt-4 mt-2">
               <Label className="text-base font-semibold">Multimedia e Instrucciones</Label>
-              
+
               {/* Botón para ir a Vocaroo */}
               <div className="mt-3 p-3 rounded-lg bg-[hsl(var(--surface-2))]">
                 <div className="flex items-center justify-between">
@@ -590,14 +573,14 @@ export default function AdvertiserDashboard() {
                       Graba tu voz o sube un audio en vocaroo.com y pega el enlace aquí.
                     </p>
                   </div>
-                  <Button type="button" variant="outline" size="sm" 
+                  <Button type="button" variant="outline" size="sm"
                     onClick={() => window.open('https://vocaroo.com', '_blank')}
                     className="gap-1"
                   >
                     <ExternalLink className="w-3 h-3" /> Ir a Vocaroo
                   </Button>
                 </div>
-                <Input 
+                <Input
                   type="url"
                   value={campForm.vocaroo_link}
                   onChange={e => setCampForm({...campForm, vocaroo_link: e.target.value})}
@@ -614,7 +597,7 @@ export default function AdvertiserDashboard() {
                 <p className="text-xs text-muted-foreground mt-1">
                   Enlace adicional con información de marca, guía de estilo, etc.
                 </p>
-                <Input 
+                <Input
                   type="url"
                   value={campForm.reference_link}
                   onChange={e => setCampForm({...campForm, reference_link: e.target.value})}
