@@ -238,24 +238,10 @@ async def reject_deposit(deposit_id: str, note: str = "", user=Depends(require_a
 
 # ===================== CAMPAIGNS =====================
 class CampaignCreate(BaseModel):
-    title: str
-    description: str = ""
-    budget: float
-    payment_per_video: float
-    niche: str = ""
-    region: str = ""
-    gender_preference: str = "any"
-    videos_requested: int = 1
-    social_networks: List[str] = []
-    content_duration: str = "1_month"
-    bonus_threshold_views: int = 0
-    bonus_amount: float = 0
-    influencer_level: str = "any"
-    external_link: str = ""
-    max_videos_per_creator: int = 1
-    # NUEVOS CAMPOS PARA VOCAROO Y REFERENCIA
-    vocaroo_link: str = ""
-    reference_link: str = ""
+    title: str; description: str = ""; budget: float; payment_per_video: float; niche: str = ""
+    region: str = ""; gender_preference: str = "any"; videos_requested: int = 1; social_networks: List[str] = []
+    content_duration: str = "1_month"; bonus_threshold_views: int = 0; bonus_amount: float = 0
+    influencer_level: str = "any"; external_link: str = ""; max_videos_per_creator: int = 1
 
 @api.post("/campaigns")
 async def create_campaign(req: CampaignCreate, user=Depends(require_advertiser)):
@@ -265,22 +251,7 @@ async def create_campaign(req: CampaignCreate, user=Depends(require_advertiser))
     if req.region:
         region_count = await db.users.count_documents({"role": "creator", "creator_profile.region": req.region})
         if region_count == 0: region_warning = f"No hay creadores en {req.region}. La campaña se propondrá a creadores que cumplan el resto de requisitos."
-    
-    # INCLUIR LOS NUEVOS CAMPOS EN LA BASE DE DATOS
-    campaign = {
-        "advertiser_id": user["sub"], "advertiser_name": u.get("name", ""), "title": req.title,
-        "description": req.description, "budget": req.budget, "budget_remaining": req.budget,
-        "payment_per_video": req.payment_per_video, "niche": req.niche, "region": req.region,
-        "gender_preference": req.gender_preference, "videos_requested": req.videos_requested,
-        "videos_completed": 0, "social_networks": req.social_networks, "content_duration": req.content_duration,
-        "bonus_threshold_views": req.bonus_threshold_views, "bonus_amount": req.bonus_amount,
-        "influencer_level": req.influencer_level, "external_link": req.external_link,
-        "max_videos_per_creator": req.max_videos_per_creator,
-        "audio_url": "", "photo_url": "", "region_warning": region_warning,
-        "vocaroo_link": req.vocaroo_link,  # <-- NUEVO
-        "reference_link": req.reference_link, # <-- NUEVO
-        "status": "active", "created_at": now_iso(),
-    }
+    campaign = {"advertiser_id": user["sub"], "advertiser_name": u.get("name", ""), "title": req.title, "description": req.description, "budget": req.budget, "budget_remaining": req.budget, "payment_per_video": req.payment_per_video, "niche": req.niche, "region": req.region, "gender_preference": req.gender_preference, "videos_requested": req.videos_requested, "videos_completed": 0, "social_networks": req.social_networks, "content_duration": req.content_duration, "bonus_threshold_views": req.bonus_threshold_views, "bonus_amount": req.bonus_amount, "influencer_level": req.influencer_level, "external_link": req.external_link, "max_videos_per_creator": req.max_videos_per_creator, "audio_url": "", "photo_url": "", "region_warning": region_warning, "status": "active", "created_at": now_iso()}
     await db.users.update_one({"_id": ObjectId(user["sub"])}, {"$inc": {"balance": -req.budget}})
     await db.transactions.insert_one({"user_id": user["sub"], "type": "campaign_escrow", "amount": -req.budget, "reference_id": "", "description": f"Reserva para campaña: {req.title}", "created_at": now_iso()})
     result = await db.campaigns.insert_one(campaign)
@@ -422,27 +393,23 @@ async def list_deliverables(campaign_id: str = Query(None), user=Depends(get_cur
     deliverables = await db.deliverables.find(query).sort("created_at", -1).to_list(500)
     return [serialize_doc(d) for d in deliverables]
 
-# NUEVO ENDPOINT PARA ADMIN: VER DETALLES DE CAMPAÑA AL REVISAR ENTREGABLE
-@api.get("/admin/deliverables/{del_id}/campaign-context")
-async def get_deliverable_campaign_context(del_id: str, user=Depends(require_admin)):
+# === NUEVO ENDPOINT: Buscar entregables por ID de campaña (Admin) ===
+@api.get("/admin/deliverables/search/{campaign_id}")
+async def search_deliverables_by_campaign(campaign_id: str, user=Depends(require_admin)):
     """
-    Devuelve el entregable junto con los detalles completos de la campaña
-    (incluyendo los links de Vocaroo y Referencia) para que el admin pueda comparar.
+    Busca todos los entregables de una campaña específica por su ID
     """
-    d = await db.deliverables.find_one({"_id": ObjectId(del_id)})
-    if not d: raise HTTPException(404, "Entregable no encontrado")
-    c = await db.campaigns.find_one({"_id": ObjectId(d["campaign_id"])})
-    if not c: raise HTTPException(404, "Campaña asociada no encontrada")
-    return {
-        "deliverable": serialize_doc(d),
-        "campaign_context": {
-            "title": c.get("title", ""),
-            "description": c.get("description", ""),
-            "vocaroo_link": c.get("vocaroo_link", ""),  # <-- EL ADMIN PUEDE VER EL AUDIO
-            "reference_link": c.get("reference_link", ""),  # <-- EL ADMIN PUEDE VER EL ENLACE
-            "external_link": c.get("external_link", "")
-        }
+    deliverables = await db.deliverables.find({"campaign_id": campaign_id}).sort("created_at", -1).to_list(500)
+    
+    # Obtener información de la campaña para mostrar junto con los entregables
+    campaign = await db.campaigns.find_one({"_id": ObjectId(campaign_id)})
+    
+    result = {
+        "campaign": serialize_doc(campaign) if campaign else None,
+        "deliverables": [serialize_doc(d) for d in deliverables],
+        "total": len(deliverables)
     }
+    return result
 
 @api.put("/admin/deliverables/{del_id}/approve")
 async def approve_deliverable(del_id: str, user=Depends(require_admin)):
@@ -521,10 +488,7 @@ async def reject_kyc(kyc_id: str, note: str = "", user=Depends(require_admin)):
 
 # ===================== WITHDRAWALS =====================
 class WithdrawalReq(BaseModel):
-    amount: float
-    method: str = "crypto"
-    wallet_address: str = ""
-    bank_details: str = ""
+    amount: float; method: str = "crypto"; wallet_address: str = ""; bank_details: str = ""
 
 @api.post("/withdrawals")
 async def request_withdrawal(req: WithdrawalReq, user=Depends(get_current_user)):
@@ -574,8 +538,7 @@ async def list_transactions(user=Depends(get_current_user)):
 
 # ===================== SUBSCRIPTIONS =====================
 class SubPlanReq(BaseModel):
-    price: float
-    description: str = ""
+    price: float; description: str = ""
 
 @api.post("/subscriptions/plan")
 async def set_subscription_plan(req: SubPlanReq, user=Depends(require_creator)):
@@ -987,4 +950,5 @@ app.add_middleware(
 
 @app.on_event("shutdown")
 async def shutdown_db_client():
-    client.close()    
+    client.close()
+    
