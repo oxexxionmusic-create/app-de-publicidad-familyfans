@@ -1,334 +1,462 @@
 import { useState, useEffect, useRef } from 'react';
 import { useAuth } from '@/App';
-import { chatAPI } from '@/lib/api';
+import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { 
-  Send, Mic, Paperclip, Image as ImageIcon, Video, X, Lock, DollarSign 
+  Send, 
+  Paperclip, 
+  Smile, 
+  MoreVertical, 
+  Phone, 
+  Video, 
+  Search,
+  X,
+  Check,
+  CheckCheck,
+  Clock
 } from 'lucide-react';
-import MessageBubble from './MessageBubble';
-import CustomContentCard from './CustomContentCard';
+import { toast } from 'sonner';
 
-export default function ChatWindow({ otherUserId, otherUserName, otherUserPhoto, onBack }) {
+// Componente de mensaje individual
+function MessageBubble({ message, isOwn }) {
+  const formatTime = (timestamp) => {
+    return new Date(timestamp).toLocaleTimeString('es-ES', { 
+      hour: '2-digit', 
+      minute: '2-digit' 
+    });
+  };
+
+  return (
+    <div className={`flex ${isOwn ? 'justify-end' : 'justify-start'} mb-4`}>
+      <div className={`flex max-w-[70%] ${isOwn ? 'flex-row-reverse' : 'flex-row'} gap-2`}>
+        {/* Avatar */}
+        {!isOwn && (
+          <Avatar className="w-8 h-8">
+            <AvatarFallback className="bg-primary/20 text-primary text-xs">
+              {message.senderName?.charAt(0).toUpperCase() || 'U'}
+            </AvatarFallback>
+          </Avatar>
+        )}
+        
+        {/* Burbuja de mensaje */}
+        <div className={`flex flex-col ${isOwn ? 'items-end' : 'items-start'}`}>
+          <div 
+            className={`px-4 py-2 rounded-2xl ${
+              isOwn 
+                ? 'bg-primary text-primary-foreground rounded-br-sm' 
+                : 'bg-muted rounded-bl-sm'
+            }`}
+          >
+            {message.content && <p className="text-sm">{message.content}</p>}
+            
+            {/* Adjuntos */}
+            {message.attachments && message.attachments.length > 0 && (
+              <div className="mt-2 space-y-1">
+                {message.attachments.map((file, idx) => (
+                  <div key={idx} className="flex items-center gap-2 text-xs opacity-90">
+                    <Paperclip className="w-3 h-3" />
+                    <span>{file.name}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+          
+          {/* Metadata */}
+          <div className="flex items-center gap-1 mt-1 px-1">
+            <span className="text-[10px] text-muted-foreground">
+              {formatTime(message.timestamp)}
+            </span>
+            {isOwn && (
+              <span>
+                {message.status === 'sent' && <Check className="w-3 h-3 text-muted-foreground" />}
+                {message.status === 'delivered' && <CheckCheck className="w-3 h-3 text-muted-foreground" />}
+                {message.status === 'read' && <CheckCheck className="w-3 h-3 text-blue-400" />}
+              </span>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Componente de conversación en la lista lateral
+function ConversationItem({ conversation, isActive, onClick }) {
+  const formatLastMessageTime = (timestamp) => {
+    const date = new Date(timestamp);
+    const now = new Date();
+    const diff = now - date;
+    
+    if (diff < 86400000) { // Menos de 24 horas
+      return date.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+    } else if (diff < 604800000) { // Menos de 7 días
+      return date.toLocaleDateString('es-ES', { weekday: 'short' });
+    } else {
+      return date.toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit' });
+    }
+  };
+
+  const unreadCount = conversation.unreadCount || 0;
+
+  return (
+    <button
+      onClick={onClick}
+      className={`w-full p-3 flex items-center gap-3 hover:bg-muted/50 transition-colors ${
+        isActive ? 'bg-muted' : ''
+      }`}
+    >
+      <Avatar className="w-12 h-12">
+        <AvatarFallback className="bg-primary/20 text-primary">
+          {conversation.name?.charAt(0).toUpperCase() || 'U'}
+        </AvatarFallback>
+      </Avatar>
+      
+      <div className="flex-1 min-w-0 text-left">
+        <div className="flex items-center justify-between">
+          <h3 className="font-semibold text-sm truncate">{conversation.name}</h3>
+          <span className="text-xs text-muted-foreground">
+            {formatLastMessageTime(conversation.lastMessageAt)}
+          </span>
+        </div>
+        <div className="flex items-center justify-between mt-1">
+          <p className="text-xs text-muted-foreground truncate">
+            {conversation.lastMessage || 'Sin mensajes'}
+          </p>
+          {unreadCount > 0 && (
+            <span className="ml-2 px-2 py-0.5 bg-primary text-primary-foreground text-[10px] rounded-full">
+              {unreadCount}
+            </span>
+          )}
+        </div>
+      </div>
+    </button>
+  );
+}
+
+// Componente principal ChatWindow
+export default function ChatWindow() {
   const { user } = useAuth();
+  const [conversations, setConversations] = useState([]);
+  const [activeConversation, setActiveConversation] = useState(null);
   const [messages, setMessages] = useState([]);
   const [newMessage, setNewMessage] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [isRecording, setIsRecording] = useState(false);
-  const [showPriceInput, setShowPriceInput] = useState(false);
-  const [price, setPrice] = useState('');
-  const [mediaPreview, setMediaPreview] = useState(null);
-  const [selectedFile, setSelectedFile] = useState(null);
-  
   const messagesEndRef = useRef(null);
-  const mediaRecorderRef = useRef(null);
-  const audioChunksRef = useRef([]);
+  const inputRef = useRef(null);
+
+  // Cargar conversaciones al montar
+  useEffect(() => {
+    loadConversations();
+  }, []);
+
+  // Scroll al último mensaje
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages]);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
 
-  useEffect(() => {
-    if (otherUserId) {
-      loadMessages();
-      // Polling para nuevos mensajes (en producción usar WebSockets)
-      const interval = setInterval(loadMessages, 10000);
-      return () => clearInterval(interval);
-    }
-  }, [otherUserId]);
-
-  useEffect(() => {
-    scrollToBottom();
-  }, [messages]);
-
-  const loadMessages = async () => {
-    try {
-      const res = await chatAPI.getMessages(otherUserId);
-      setMessages(res.data);
-    } catch (err) {
-      console.error('Error loading messages:', err);
-    }
-  };
-
-  const handleSendText = async () => {
-    if (!newMessage.trim()) return;
-    
+  // Simular carga de conversaciones (reemplazar con API real)
+  const loadConversations = async () => {
     setIsLoading(true);
     try {
-      await chatAPI.sendMessage({
-        recipient_id: otherUserId,
-        type: 'text',
-        content: newMessage
-      });
-      setNewMessage('');
-      loadMessages();
-    } catch (err) {
-      toast.error(err.response?.data?.detail || 'Error al enviar mensaje');
-    }
-    setIsLoading(false);
-  };
-
-  const startRecording = async () => {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      mediaRecorderRef.current = new MediaRecorder(stream);
-      audioChunksRef.current = [];
+      // TODO: Reemplazar con llamada API real
+      // const response = await chatAPI.getConversations();
       
-      mediaRecorderRef.current.ondataavailable = (event) => {
-        audioChunksRef.current.push(event.data);
-      };
+      // Datos de ejemplo
+      const mockConversations = [
+        {
+          id: '1',
+          name: 'Soporte Técnico',
+          avatar: null,
+          lastMessage: '¿En qué podemos ayudarte?',
+          lastMessageAt: new Date().toISOString(),
+          unreadCount: 2,
+          type: 'support'
+        },
+        {
+          id: '2',
+          name: 'Anunciante - Coca Cola',
+          avatar: null,
+          lastMessage: 'Revisamos tu entregable',
+          lastMessageAt: new Date(Date.now() - 3600000).toISOString(),
+          unreadCount: 0,
+          type: 'advertiser'
+        }
+      ];
       
-      mediaRecorderRef.current.onstop = async () => {
-        const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/wav' });
-        await sendAudio(audioBlob);
-        // Limpiar stream
-        stream.getTracks().forEach(track => track.stop());
-      };
-      
-      mediaRecorderRef.current.start();
-      setIsRecording(true);
-    } catch (err) {
-      toast.error('No se pudo acceder al micrófono');
+      setConversations(mockConversations);
+    } catch (error) {
+      toast.error('Error al cargar conversaciones');
+      console.error(error);
+    } finally {
+      setIsLoading(false);
     }
   };
 
-  const stopRecording = () => {
-    if (mediaRecorderRef.current && isRecording) {
-      mediaRecorderRef.current.stop();
-      setIsRecording(false);
-    }
-  };
-
-  const sendAudio = async (audioBlob) => {
+  // Cargar mensajes de una conversación
+  const loadMessages = async (conversationId) => {
     setIsLoading(true);
     try {
-      const formData = new FormData();
-      formData.append('recipient_id', otherUserId);
-      formData.append('audio', audioBlob, 'audio.wav');
+      // TODO: Reemplazar con llamada API real
+      // const response = await chatAPI.getMessages(conversationId);
       
-      await chatAPI.sendAudio(formData);
-      loadMessages();
-    } catch (err) {
-      toast.error(err.response?.data?.detail || 'Error al enviar audio');
-    }
-    setIsLoading(false);
-  };
-
-  const handleFileSelect = (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-    
-    // Validar tipo y tamaño
-    const validTypes = ['image/jpeg', 'image/png', 'image/gif', 'video/mp4', 'video/webm'];
-    if (!validTypes.includes(file.type)) {
-      toast.error('Formato no soportado');
-      return;
-    }
-    
-    if (file.size > 100 * 1024 * 1024) { // 100MB
-      toast.error('El archivo es demasiado grande (máx 100MB)');
-      return;
-    }
-    
-    setSelectedFile(file);
-    
-    // Preview para imágenes
-    if (file.type.startsWith('image/')) {
-      const reader = new FileReader();
-      reader.onload = (e) => setMediaPreview(e.target.result);
-      reader.readAsDataURL(file);
-    }
-  };
-
-  const handleSendMedia = async () => {
-    if (!selectedFile) return;
-    
-    setIsLoading(true);
-    try {
-      const formData = new FormData();
-      formData.append('recipient_id', otherUserId);
-      formData.append('file', selectedFile);
-      formData.append('type', selectedFile.type.startsWith('video/') ? 'video' : 'image');
-      formData.append('is_paid', showPriceInput);
-      if (showPriceInput && price) {
-        formData.append('price', parseFloat(price));
-      }
+      // Datos de ejemplo
+      const mockMessages = [
+        {
+          id: '1',
+          content: '¡Hola! Bienvenido al chat de soporte',
+          senderId: 'system',
+          senderName: 'Soporte',
+          timestamp: new Date(Date.now() - 7200000).toISOString(),
+          status: 'read',
+          type: 'text'
+        },
+        {
+          id: '2',
+          content: 'Tengo una pregunta sobre mi campaña',
+          senderId: user?.id,
+          senderName: user?.name,
+          timestamp: new Date(Date.now() - 3600000).toISOString(),
+          status: 'read',
+          type: 'text'
+        },
+        {
+          id: '3',
+          content: 'Claro, ¿en qué puedo ayudarte?',
+          senderId: 'support',
+          senderName: 'Soporte',
+          timestamp: new Date(Date.now() - 1800000).toISOString(),
+          status: 'read',
+          type: 'text'
+        }
+      ];
       
-      await chatAPI.sendMedia(formData);
-      setSelectedFile(null);
-      setMediaPreview(null);
-      setShowPriceInput(false);
-      setPrice('');
-      loadMessages();
-    } catch (err) {
-      toast.error(err.response?.data?.detail || 'Error al enviar archivo');
+      setMessages(mockMessages);
+    } catch (error) {
+      toast.error('Error al cargar mensajes');
+      console.error(error);
+    } finally {
+      setIsLoading(false);
     }
-    setIsLoading(false);
   };
 
-  const handlePayForContent = async (messageId, price) => {
+  // Seleccionar conversación
+  const handleSelectConversation = (conversation) => {
+    setActiveConversation(conversation);
+    loadMessages(conversation.id);
+    
+    // Marcar como leídos
+    setConversations(prev => 
+      prev.map(c => 
+        c.id === conversation.id ? { ...c, unreadCount: 0 } : c
+      )
+    );
+  };
+
+  // Enviar mensaje
+  const handleSendMessage = async (e) => {
+    e.preventDefault();
+    
+    if (!newMessage.trim() || !activeConversation) return;
+
+    const message = {
+      id: Date.now().toString(),
+      content: newMessage.trim(),
+      senderId: user?.id,
+      senderName: user?.name,
+      timestamp: new Date().toISOString(),
+      status: 'sent',
+      type: 'text'
+    };
+
+    setMessages(prev => [...prev, message]);
+    setNewMessage('');
+    
+    // Actualizar última mensaje de la conversación
+    setConversations(prev =>
+      prev.map(c =>
+        c.id === activeConversation.id
+          ? { ...c, lastMessage: message.content, lastMessageAt: message.timestamp }
+          : c
+      )
+    );
+
     try {
-      await chatAPI.payForContent(messageId, { payment_method: 'balance' });
-      toast.success('Contenido desbloqueado');
-      loadMessages();
-    } catch (err) {
-      toast.error(err.response?.data?.detail || 'Error al procesar pago');
+      // TODO: Reemplazar con llamada API real
+      // await chatAPI.sendMessage(activeConversation.id, message.content);
+      
+      // Simular respuesta
+      setTimeout(() => {
+        setMessages(prev => 
+          prev.map(m => 
+            m.id === message.id ? { ...m, status: 'delivered' } : m
+          )
+        );
+      }, 1000);
+      
+    } catch (error) {
+      toast.error('Error al enviar mensaje');
+      console.error(error);
     }
   };
+
+  // Filtrar conversaciones
+  const filteredConversations = conversations.filter(c =>
+    c.name?.toLowerCase().includes(searchQuery.toLowerCase())
+  );
 
   return (
-    <div className="flex flex-col h-full bg-[hsl(var(--surface-1))]">
-      {/* Header */}
-      <div className="flex items-center gap-3 p-4 border-b border-border">
-        <Button variant="ghost" size="icon" onClick={onBack}>
-          <X className="w-4 h-4" />
-        </Button>
-        <img 
-          src={otherUserPhoto || `https://ui-avatars.com/api/?name=${otherUserName}&background=random`}
-          alt={otherUserName}
-          className="w-10 h-10 rounded-full object-cover"
-        />
-        <div>
-          <p className="font-semibold">{otherUserName}</p>
-          <p className="text-xs text-muted-foreground">En línea</p>
-        </div>
-      </div>
-
-      {/* Messages */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-4">
-        {messages.map((msg) => (
-          <div key={msg.id}>
-            {msg.type === 'custom_content' ? (
-              <CustomContentCard 
-                message={msg}
-                isSender={msg.sender_id === user?.id}
-                onPay={() => handlePayForContent(msg.id, msg.price)}
-              />
-            ) : (
-              <MessageBubble 
-                message={msg}
-                isSender={msg.sender_id === user?.id}
-              />
+    <Card className="h-[calc(100vh-8rem)] flex overflow-hidden">
+      {/* Sidebar - Lista de conversaciones */}
+      <div className="w-80 border-r flex flex-col">
+        {/* Header */}
+        <div className="p-4 border-b">
+          <h2 className="text-lg font-semibold mb-3">Mensajes</h2>
+          
+          {/* Buscador */}
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+            <Input
+              placeholder="Buscar conversaciones..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-9"
+            />
+            {searchQuery && (
+              <button
+                onClick={() => setSearchQuery('')}
+                className="absolute right-3 top-1/2 -translate-y-1/2"
+              >
+                <X className="w-4 h-4 text-muted-foreground" />
+              </button>
             )}
           </div>
-        ))}
-        <div ref={messagesEndRef} />
-      </div>
-
-      {/* Input Area */}
-      <div className="p-4 border-t border-border space-y-3">
-        {/* Media Preview */}
-        {mediaPreview && (
-          <div className="relative">
-            <img src={mediaPreview} alt="Preview" className="max-h-32 rounded-lg" />
-            <Button 
-              size="icon" 
-              variant="destructive" 
-              className="absolute top-2 right-2 h-6 w-6"
-              onClick={() => { setMediaPreview(null); setSelectedFile(null); }}
-            >
-              <X className="w-3 h-3" />
-            </Button>
-          </div>
-        )}
-
-        {/* Price Input for Premium Content */}
-        {showPriceInput && (
-          <div className="flex items-center gap-2 p-3 bg-primary/10 rounded-lg">
-            <DollarSign className="w-4 h-4 text-primary" />
-            <Input
-              type="number"
-              step="0.01"
-              min="0.01"
-              placeholder="Precio en USD"
-              value={price}
-              onChange={(e) => setPrice(e.target.value)}
-              className="flex-1"
-            />
-            <Button size="sm" variant="ghost" onClick={() => setShowPriceInput(false)}>
-              Cancelar
-            </Button>
-          </div>
-        )}
-
-        {/* Input Row */}
-        <div className="flex items-center gap-2">
-          <Input
-            placeholder="Escribe un mensaje..."
-            value={newMessage}
-            onChange={(e) => setNewMessage(e.target.value)}
-            onKeyPress={(e) => e.key === 'Enter' && !e.shiftKey && (e.preventDefault(), handleSendText())}
-            disabled={isLoading}
-            className="flex-1"
-          />
-          
-          <Button 
-            size="icon" 
-            variant="ghost"
-            onClick={() => document.getElementById('file-input').click()}
-            disabled={isLoading}
-          >
-            <Paperclip className="w-4 h-4" />
-          </Button>
-          <input
-            id="file-input"
-            type="file"
-            accept="image/*,video/*"
-            className="hidden"
-            onChange={handleFileSelect}
-          />
-          
-          {selectedFile ? (
-            <>
-              {user?.role === 'creator' && (
-                <Button 
-                  size="icon" 
-                  variant={showPriceInput ? 'default' : 'outline'}
-                  onClick={() => setShowPriceInput(!showPriceInput)}
-                  title="Vender como contenido premium"
-                >
-                  <Lock className="w-4 h-4" />
-                </Button>
-              )}
-              <Button 
-                size="sm" 
-                onClick={handleSendMedia}
-                disabled={isLoading}
-              >
-                {isLoading ? 'Enviando...' : 'Enviar'}
-              </Button>
-            </>
-          ) : (
-            <>
-              <Button 
-                size="icon" 
-                variant={isRecording ? 'destructive' : 'ghost'}
-                onMouseDown={startRecording}
-                onMouseUp={stopRecording}
-                onMouseLeave={stopRecording}
-                disabled={isLoading}
-                title="Mantén presionado para grabar audio"
-              >
-                <Mic className={`w-4 h-4 ${isRecording ? 'animate-pulse' : ''}`} />
-              </Button>
-              <Button 
-                size="icon" 
-                onClick={handleSendText}
-                disabled={isLoading || !newMessage.trim()}
-              >
-                <Send className="w-4 h-4" />
-              </Button>
-            </>
-          )}
         </div>
-        
-        {isRecording && (
-          <p className="text-xs text-center text-muted-foreground animate-pulse">
-            🎤 Grabando... Suelta para enviar
-          </p>
+
+        {/* Lista de conversaciones */}
+        <ScrollArea className="flex-1">
+          {isLoading ? (
+            <div className="p-4 text-center text-muted-foreground">
+              Cargando...
+            </div>
+          ) : filteredConversations.length === 0 ? (
+            <div className="p-4 text-center text-muted-foreground text-sm">
+              {searchQuery ? 'No se encontraron conversaciones' : 'No hay conversaciones'}
+            </div>
+          ) : (
+            filteredConversations.map(conversation => (
+              <ConversationItem
+                key={conversation.id}
+                conversation={conversation}
+                isActive={activeConversation?.id === conversation.id}
+                onClick={() => handleSelectConversation(conversation)}
+              />
+            ))
+          )}
+        </ScrollArea>
+      </div>
+
+      {/* Área de chat */}
+      <div className="flex-1 flex flex-col">
+        {activeConversation ? (
+          <>
+            {/* Header del chat */}
+            <div className="p-4 border-b flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <Avatar className="w-10 h-10">
+                  <AvatarFallback className="bg-primary/20 text-primary">
+                    {activeConversation.name?.charAt(0).toUpperCase()}
+                  </AvatarFallback>
+                </Avatar>
+                <div>
+                  <h3 className="font-semibold">{activeConversation.name}</h3>
+                  <p className="text-xs text-muted-foreground">
+                    {activeConversation.type === 'support' ? 'Soporte Técnico' : 'En línea'}
+                  </p>
+                </div>
+              </div>
+              
+              <div className="flex items-center gap-2">
+                <Button variant="ghost" size="icon">
+                  <Phone className="w-4 h-4" />
+                </Button>
+                <Button variant="ghost" size="icon">
+                  <Video className="w-4 h-4" />
+                </Button>
+                <Button variant="ghost" size="icon">
+                  <MoreVertical className="w-4 h-4" />
+                </Button>
+              </div>
+            </div>
+
+            {/* Mensajes */}
+            <ScrollArea className="flex-1 p-4">
+              {messages.length === 0 ? (
+                <div className="h-full flex items-center justify-center text-muted-foreground text-sm">
+                  No hay mensajes aún. ¡Escribe el primero!
+                </div>
+              ) : (
+                messages.map(message => (
+                  <MessageBubble
+                    key={message.id}
+                    message={message}
+                    isOwn={message.senderId === user?.id}
+                  />
+                ))
+              )}
+              <div ref={messagesEndRef} />
+            </ScrollArea>
+
+            {/* Input de mensaje */}
+            <form onSubmit={handleSendMessage} className="p-4 border-t">
+              <div className="flex items-center gap-2">
+                <Button type="button" variant="ghost" size="icon">
+                  <Paperclip className="w-4 h-4" />
+                </Button>
+                
+                <Input
+                  ref={inputRef}
+                  placeholder="Escribe un mensaje..."
+                  value={newMessage}
+                  onChange={(e) => setNewMessage(e.target.value)}
+                  className="flex-1"
+                  disabled={isLoading}
+                />
+                
+                <Button type="button" variant="ghost" size="icon">
+                  <Smile className="w-4 h-4" />
+                </Button>
+                
+                <Button 
+                  type="submit" 
+                  size="icon"
+                  disabled={!newMessage.trim() || isLoading}
+                >
+                  <Send className="w-4 h-4" />
+                </Button>
+              </div>
+            </form>
+          </>
+        ) : (
+          /* Estado vacío - Sin conversación seleccionada */
+          <div className="h-full flex items-center justify-center text-muted-foreground">
+            <div className="text-center">
+              <div className="w-16 h-16 bg-muted rounded-full flex items-center justify-center mx-auto mb-4">
+                <Send className="w-8 h-8 text-muted-foreground" />
+              </div>
+              <p className="text-sm">Selecciona una conversación para empezar</p>
+            </div>
+          </div>
         )}
       </div>
-    </div>
+    </Card>
   );
 }
