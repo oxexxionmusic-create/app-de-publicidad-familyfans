@@ -4,20 +4,26 @@ import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-route
 import { Toaster } from "@/components/ui/sonner";
 import { authAPI } from "@/lib/api";
 
-// Importaciones de tus páginas
-// Asegúrate de que estos archivos existan en tu carpeta src/pages/
+// ===================== IMPORTS DE PÁGINAS =====================
+// Páginas públicas
 import Home from "@/pages/Home";
 import Login from "@/pages/Login";
 import Register from "@/pages/Register";
-import AdminDashboard from "@/pages/AdminDashboard";
-import AdvertiserDashboard from "@/pages/AdvertiserDashboard";
-import CreatorDashboard from "@/pages/CreatorDashboard";
-import FanDashboard from "@/pages/FanDashboard";
 import Rankings from "@/pages/Rankings";
 import Explore from "@/pages/Explore";
 import CreatorProfile from "@/pages/CreatorProfile";
 
-// Contexto de Autenticación
+// Dashboards por rol
+import AdminDashboard from "@/pages/AdminDashboard";
+import AdvertiserDashboard from "@/pages/AdvertiserDashboard";
+import CreatorDashboard from "@/pages/CreatorDashboard";
+import FanDashboard from "@/pages/FanDashboard";
+
+// Nuevas páginas: Chat Privado
+import CreatorPrivateChat from "@/pages/CreatorPrivateChat";
+import FanPrivateChat from "@/pages/FanPrivateChat";
+
+// ===================== CONTEXTO DE AUTENTICACIÓN =====================
 const AuthContext = createContext(null);
 export const useAuth = () => useContext(AuthContext);
 
@@ -75,13 +81,17 @@ function AuthProvider({ children }) {
   );
 }
 
-// Ruta Protegida por Rol
+// ===================== RUTA PROTEGIDA POR ROL =====================
 function ProtectedRoute({ children, roles }) {
   const { user, loading } = useAuth();
   const location = useLocation();
 
   if (loading) {
-    return <div className="flex items-center justify-center h-screen">Cargando...</div>;
+    return (
+      <div className="flex items-center justify-center h-screen">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+      </div>
+    );
   }
 
   if (!user) {
@@ -95,12 +105,16 @@ function ProtectedRoute({ children, roles }) {
   return children;
 }
 
-// Redirección automática al dashboard correcto según el rol
+// ===================== REDIRECCIÓN INTELIGENTE AL DASHBOARD =====================
 function DashboardRedirect() {
   const { user, loading } = useAuth();
 
   if (loading) {
-    return <div className="flex items-center justify-center h-screen">Cargando...</div>;
+    return (
+      <div className="flex items-center justify-center h-screen">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+      </div>
+    );
   }
 
   if (!user) return <Navigate to="/login" replace />;
@@ -119,23 +133,24 @@ function DashboardRedirect() {
   }
 }
 
+// ===================== COMPONENTE PRINCIPAL =====================
 function App() {
   return (
     <BrowserRouter>
       <AuthProvider>
         <Routes>
-          {/* Rutas Públicas */}
+          {/* ===================== RUTAS PÚBLICAS ===================== */}
           <Route path="/" element={<Home />} />
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
           <Route path="/rankings" element={<Rankings />} />
           <Route path="/explorar" element={<Explore />} />
           <Route path="/creador/:id" element={<CreatorProfile />} />
-          
-          {/* Redirección inteligente al dashboard */}
+
+          {/* Redirección inteligente al dashboard según rol */}
           <Route path="/dashboard" element={<DashboardRedirect />} />
 
-          {/* Admin */}
+          {/* ===================== ADMIN ===================== */}
           <Route
             path="/admin/*"
             element={
@@ -145,7 +160,7 @@ function App() {
             }
           />
 
-          {/* Anunciante */}
+          {/* ===================== ANUNCIANTE ===================== */}
           <Route
             path="/advertiser/*"
             element={
@@ -155,7 +170,7 @@ function App() {
             }
           />
 
-          {/* Creador */}
+          {/* ===================== CREADOR ===================== */}
           <Route
             path="/creator/*"
             element={
@@ -164,8 +179,25 @@ function App() {
               </ProtectedRoute>
             }
           />
+          {/* Chat Privado para Creadores */}
+          <Route
+            path="/creator/chat"
+            element={
+              <ProtectedRoute roles={["creator", "admin"]}>
+                <CreatorPrivateChat />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/creator/chat/:fanId"
+            element={
+              <ProtectedRoute roles={["creator", "admin"]}>
+                <CreatorPrivateChat />
+              </ProtectedRoute>
+            }
+          />
 
-          {/* Fan */}
+          {/* ===================== FAN ===================== */}
           <Route
             path="/fan/*"
             element={
@@ -174,14 +206,34 @@ function App() {
               </ProtectedRoute>
             }
           />
+          {/* Chat Privado para Fans */}
+          <Route
+            path="/fan/chat"
+            element={
+              <ProtectedRoute roles={["fan", "admin"]}>
+                <FanPrivateChat />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/fan/chat/:creatorId"
+            element={
+              <ProtectedRoute roles={["fan", "admin"]}>
+                <FanPrivateChat />
+              </ProtectedRoute>
+            }
+          />
 
-          {/* Ruta por defecto (404 -> Home) */}
+          {/* ===================== RUTA POR DEFECTO (404) ===================== */}
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
-        <Toaster position="top-right" richColors />
+
+        {/* Notificaciones globales */}
+        <Toaster position="top-right" richColors closeButton />
       </AuthProvider>
     </BrowserRouter>
   );
 }
 
+export default App;
 export default App;
