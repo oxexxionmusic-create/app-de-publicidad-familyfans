@@ -1,134 +1,129 @@
-import { createContext, useContext, useState, useEffect } from "react";
+import { createContext, useContext, useState, useEffect, useCallback } from "react";
+import "@/App.css";
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { Toaster } from "@/components/ui/sonner";
 import { authAPI } from "@/lib/api";
 
-// ==================== IMPORTACIONES ====================
-
-// Páginas Públicas
+// Importaciones de tus páginas (asegúrate de que existan en tu carpeta pages/)
 import Home from "@/pages/Home";
 import Login from "@/pages/Login";
 import Register from "@/pages/Register";
-import Rankings from "@/pages/Rankings";
-import Explore from "@/pages/Explore";
-import CreatorProfile from "@/pages/CreatorProfile";
-
-// Dashboards
 import AdminDashboard from "@/pages/AdminDashboard";
 import AdvertiserDashboard from "@/pages/AdvertiserDashboard";
 import CreatorDashboard from "@/pages/CreatorDashboard";
 import FanDashboard from "@/pages/FanDashboard";
+import Rankings from "@/pages/Rankings";
+import Explore from "@/pages/Explore";
+import CreatorProfile from "@/pages/CreatorProfile";
 
-// 🔹 IMPORTANTE: Recuperación de componentes de Chat
-import CreatorPrivateChat from "@/pages/CreatorPrivateChat";
-import FanPrivateChat from "@/pages/FanPrivateChat";
-
-// ==================== CONTEXTO DE AUTENTICACIÓN ====================
-
+// Contexto de Autenticación
 const AuthContext = createContext(null);
-
-export const useAuth = () => {
-  const context = useContext(AuthContext);
-  if (!context) {
-    throw new Error("useAuth debe ser usado dentro de un AuthProvider");
-  }
-  return context;
-};
+export const useAuth = () => useContext(AuthContext);
 
 function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
-  const [token, setToken] = useState(localStorage.getItem("ffm_token"));
   const [loading, setLoading] = useState(true);
+  const [token, setToken] = useState(localStorage.getItem("ffm_token"));
+
+  const fetchUser = useCallback(async () => {
+    if (!token) {
+      setLoading(false);
+      return;
+    }
+    try {
+      const res = await authAPI.me();
+      setUser(res.data);
+    } catch {
+      localStorage.removeItem("ffm_token");
+      localStorage.removeItem("ffm_user");
+      setToken(null);
+      setUser(null);
+    }
+    setLoading(false);
+  }, [token]);
 
   useEffect(() => {
-    const initAuth = async () => {
-      const storedToken = localStorage.getItem("ffm_token");
-      const storedUser = localStorage.getItem("ffm_user");
+    fetchUser();
+  }, [fetchUser]);
 
-      if (storedToken && storedUser) {
-        try {
-          const res = await authAPI.me();
-          setUser(res.data);
-        } catch (error) {
-          console.error("Error fetching user:", error);
-          localStorage.removeItem("ffm_token");
-          localStorage.removeItem("ffm_user");
-          setToken(null);
-        }
-      }
-      setLoading(false);
-    };
+  const login = (tokenVal, userData) => {
+    localStorage.setItem("ffm_token", tokenVal);
+    localStorage.setItem("ffm_user", JSON.stringify(userData));
+    setToken(tokenVal);
+    setUser(userData);
+  };
 
-    initAuth();
-  }, []);
+  const logout = () => {
+    localStorage.removeItem("ffm_token");
+    localStorage.removeItem("ffm_user");
+    setToken(null);
+    setUser(null);
+  };
+
+  const refreshUser = async () => {
+    try {
+      const res = await authAPI.me();
+      setUser(res.data);
+    } catch {}
+  };
 
   return (
-    <AuthContext.Provider value={{ user, setUser, token, setToken, loading, setLoading }}>
+    <AuthContext.Provider value={{ user, token, loading, login, logout, refreshUser }}>
       {children}
     </AuthContext.Provider>
   );
 }
 
-// ==================== RUTAS PROTEGIDAS ====================
-
+// Ruta Protegida por Rol
 function ProtectedRoute({ children, roles }) {
   const { user, loading } = useAuth();
+  const location = useLocation();
 
   if (loading) {
-    return (
-      <div className="flex items-center justify-center h-screen">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
-          <p className="text-muted-foreground">Cargando...</p>
-        </div>
-      </div>
-    );
+    return <div className="flex items-center justify-center h-screen">Cargando...</div>;
   }
 
   if (!user) {
-    return <Navigate to="/login" replace />;
+    return <Navigate to="/login" state={{ from: location }} replace />;
   }
 
   if (roles && !roles.includes(user.role)) {
-    return <Navigate to="/dashboard" replace />;
+    return <Navigate to="/" replace />;
   }
 
   return children;
 }
 
+// Redirección automática al dashboard correcto según el rol
 function DashboardRedirect() {
   const { user, loading } = useAuth();
 
   if (loading) {
-    return (
-      <div className="flex items-center justify-center h-screen">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
-          <p className="text-muted-foreground">Cargando...</p>
-        </div>
-      </div>
-    );
+    return <div className="flex items-center justify-center h-screen">Cargando...</div>;
   }
 
   if (!user) return <Navigate to="/login" replace />;
 
   switch (user.role) {
-    case "admin": return <Navigate to="/admin" replace />;
-    case "advertiser": return <Navigate to="/advertiser" replace />;
-    case "creator": return <Navigate to="/creator" replace />;
-    case "fan": return <Navigate to="/fan" replace />;
-    default: return <Navigate to="/" replace />;
+    case "admin":
+      return <Navigate to="/admin" replace />;
+    case "advertiser":
+      return <Navigate to="/advertiser" replace />;
+    case "creator":
+      return <Navigate to="/creator" replace />;
+    case "fan":
+      return <Navigate to="/fan" replace />;
+    default:
+      return <Navigate to="/" replace />;
   }
 }
-
-// ==================== COMPONENTE PRINCIPAL ====================
 
 function App() {
   return (
     <BrowserRouter>
       <AuthProvider>
         <Routes>
-          {/* ==================== RUTAS PÚBLICAS ==================== */}
+          {/* Rutas Públicas */}
           <Route path="/" element={<Home />} />
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
@@ -136,10 +131,10 @@ function App() {
           <Route path="/explorar" element={<Explore />} />
           <Route path="/creador/:id" element={<CreatorProfile />} />
 
-          {/* ==================== REDIRECCIÓN ==================== */}
+          {/* Redirección inteligente al dashboard */}
           <Route path="/dashboard" element={<DashboardRedirect />} />
 
-          {/* ==================== ADMIN ==================== */}
+          {/* Admin */}
           <Route
             path="/admin/*"
             element={
@@ -149,7 +144,7 @@ function App() {
             }
           />
 
-          {/* ==================== ANUNCIANTE ==================== */}
+          {/* Anunciante */}
           <Route
             path="/advertiser/*"
             element={
@@ -159,7 +154,7 @@ function App() {
             }
           />
 
-          {/* ==================== CREADOR ==================== */}
+          {/* Creador */}
           <Route
             path="/creator/*"
             element={
@@ -169,17 +164,7 @@ function App() {
             }
           />
 
-          {/* 🔹 NUEVO: RUTAS DE CHAT PRIVADO (RECUPERADAS) ==================== */}
-          <Route
-            path="/creator/chat/*"
-            element={
-              <ProtectedRoute roles={["creator", "admin"]}>
-                <CreatorPrivateChat />
-              </ProtectedRoute>
-            }
-          />
-
-          {/* ==================== FAN ==================== */}
+          {/* Fan */}
           <Route
             path="/fan/*"
             element={
@@ -189,17 +174,7 @@ function App() {
             }
           />
 
-          {/* 🔹 NUEVO: RUTAS DE CHAT PRIVADO (RECUPERADAS) ==================== */}
-          <Route
-            path="/fan/chat/*"
-            element={
-              <ProtectedRoute roles={["fan", "admin"]}>
-                <FanPrivateChat />
-              </ProtectedRoute>
-            }
-          />
-
-          {/* ==================== RUTA POR DEFECTO ==================== */}
+          {/* Ruta por defecto */}
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
         <Toaster position="top-right" richColors />
