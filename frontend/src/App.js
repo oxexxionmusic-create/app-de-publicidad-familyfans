@@ -1,30 +1,30 @@
-import { createContext, useContext, useState, useEffect, useCallback, Suspense, lazy } from "react";
-import "@/App.css";
+import { createContext, useContext, useState, useEffect, useCallback } from "react";
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { Toaster } from "@/components/ui/sonner";
 import { authAPI } from "@/lib/api";
 
-// Importaciones de páginas públicas
+// Importaciones de páginas
 import Home from "@/pages/Home";
 import Login from "@/pages/Login";
 import Register from "@/pages/Register";
+import AdminDashboard from "@/pages/AdminDashboard";
+import AdvertiserDashboard from "@/pages/AdvertiserDashboard";
+import CreatorDashboard from "@/pages/CreatorDashboard";
+import FanDashboard from "@/pages/FanDashboard";
 import Rankings from "@/pages/Rankings";
 import Explore from "@/pages/Explore";
 import CreatorProfile from "@/pages/CreatorProfile";
 
-// Importaciones de dashboards (lazy loading para mejor performance)
-const AdminDashboard = lazy(() => import("@/pages/AdminDashboard"));
-const AdvertiserDashboard = lazy(() => import("@/pages/AdvertiserDashboard"));
-const CreatorDashboard = lazy(() => import("@/pages/CreatorDashboard"));
-const FanDashboard = lazy(() => import("@/pages/FanDashboard"));
-
-// Importaciones de Chat Privado
-const CreatorPrivateChat = lazy(() => import("@/pages/CreatorPrivateChat"));
-const FanPrivateChat = lazy(() => import("@/pages/FanPrivateChat"));
-
 // Contexto de Autenticación
 const AuthContext = createContext(null);
-export const useAuth = () => useContext(AuthContext);
+
+export const useAuth = () => {
+  const context = useContext(AuthContext);
+  if (!context) {
+    throw new Error("useAuth debe ser usado dentro de un AuthProvider");
+  }
+  return context;
+};
 
 function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
@@ -39,7 +39,8 @@ function AuthProvider({ children }) {
     try {
       const res = await authAPI.me();
       setUser(res.data);
-    } catch {
+    } catch (error) {
+      console.error("Error fetching user:", error);
       localStorage.removeItem("ffm_token");
       localStorage.removeItem("ffm_user");
       setToken(null);
@@ -70,7 +71,9 @@ function AuthProvider({ children }) {
     try {
       const res = await authAPI.me();
       setUser(res.data);
-    } catch {}
+    } catch (error) {
+      console.error("Error refreshing user:", error);
+    }
   };
 
   return (
@@ -88,7 +91,10 @@ function ProtectedRoute({ children, roles }) {
   if (loading) {
     return (
       <div className="flex items-center justify-center h-screen">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
+          <p className="text-muted-foreground">Cargando...</p>
+        </div>
       </div>
     );
   }
@@ -111,7 +117,10 @@ function DashboardRedirect() {
   if (loading) {
     return (
       <div className="flex items-center justify-center h-screen">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
+          <p className="text-muted-foreground">Cargando...</p>
+        </div>
       </div>
     );
   }
@@ -132,102 +141,65 @@ function DashboardRedirect() {
   }
 }
 
-// Componente de carga para lazy loading
-function LoadingFallback() {
-  return (
-    <div className="flex items-center justify-center h-screen">
-      <div className="text-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
-        <p className="text-muted-foreground">Cargando...</p>
-      </div>
-    </div>
-  );
-}
-
 function App() {
   return (
     <BrowserRouter>
       <AuthProvider>
-        <Suspense fallback={<LoadingFallback />}>
-          <Routes>
-            {/* ==================== RUTAS PÚBLICAS ==================== */}
-            <Route path="/" element={<Home />} />
-            <Route path="/login" element={<Login />} />
-            <Route path="/register" element={<Register />} />
-            <Route path="/rankings" element={<Rankings />} />
-            <Route path="/explorar" element={<Explore />} />
-            <Route path="/creador/:id" element={<CreatorProfile />} />
+        <Routes>
+          {/* Rutas Públicas */}
+          <Route path="/" element={<Home />} />
+          <Route path="/login" element={<Login />} />
+          <Route path="/register" element={<Register />} />
+          <Route path="/rankings" element={<Rankings />} />
+          <Route path="/explorar" element={<Explore />} />
+          <Route path="/creador/:id" element={<CreatorProfile />} />
 
-            {/* Redirección inteligente al dashboard */}
-            <Route path="/dashboard" element={<DashboardRedirect />} />
+          {/* Redirección inteligente al dashboard */}
+          <Route path="/dashboard" element={<DashboardRedirect />} />
 
-            {/* ==================== ADMIN ==================== */}
-            <Route
-              path="/admin/*"
-              element={
-                <ProtectedRoute roles={["admin"]}>
-                  <AdminDashboard />
-                </ProtectedRoute>
-              }
-            />
+          {/* Admin */}
+          <Route
+            path="/admin/*"
+            element={
+              <ProtectedRoute roles={["admin"]}>
+                <AdminDashboard />
+              </ProtectedRoute>
+            }
+          />
 
-            {/* ==================== ANUNCIANTE ==================== */}
-            <Route
-              path="/advertiser/*"
-              element={
-                <ProtectedRoute roles={["advertiser", "admin"]}>
-                  <AdvertiserDashboard />
-                </ProtectedRoute>
-              }
-            />
+          {/* Anunciante */}
+          <Route
+            path="/advertiser/*"
+            element={
+              <ProtectedRoute roles={["advertiser", "admin"]}>
+                <AdvertiserDashboard />
+              </ProtectedRoute>
+            }
+          />
 
-            {/* ==================== CREADOR ==================== */}
-            <Route
-              path="/creator/*"
-              element={
-                <ProtectedRoute roles={["creator", "admin"]}>
-                  <CreatorDashboard />
-                </ProtectedRoute>
-              }
-            />
+          {/* Creador */}
+          <Route
+            path="/creator/*"
+            element={
+              <ProtectedRoute roles={["creator", "admin"]}>
+                <CreatorDashboard />
+              </ProtectedRoute>
+            }
+          />
 
-            {/* Chat Privado para Creadores */}
-            <Route
-              path="/creator/chat/*"
-              element={
-                <ProtectedRoute roles={["creator", "admin"]}>
-                  <CreatorPrivateChat />
-                </ProtectedRoute>
-              }
-            />
+          {/* Fan */}
+          <Route
+            path="/fan/*"
+            element={
+              <ProtectedRoute roles={["fan", "admin"]}>
+                <FanDashboard />
+              </ProtectedRoute>
+            }
+          />
 
-            {/* ==================== FAN ==================== */}
-            <Route
-              path="/fan/*"
-              element={
-                <ProtectedRoute roles={["fan", "admin"]}>
-                  <FanDashboard />
-                </ProtectedRoute>
-              }
-            />
-
-            {/* Chat Privado para Fans */}
-            <Route
-              path="/fan/chat/*"
-              element={
-                <ProtectedRoute roles={["fan", "admin"]}>
-                  <FanPrivateChat />
-                </ProtectedRoute>
-              }
-            />
-
-            {/* ==================== MEDIA & CLOUDINARY (API) ==================== */}
-            {/* Estas rutas se manejan en el backend via /api/media/* y /api/cloudinary/* */}
-
-            {/* ==================== RUTA POR DEFECTO ==================== */}
-            <Route path="*" element={<Navigate to="/" replace />} />
-          </Routes>
-        </Suspense>
+          {/* Ruta por defecto - 404 */}
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
         <Toaster position="top-right" richColors />
       </AuthProvider>
     </BrowserRouter>
