@@ -4,7 +4,7 @@ import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-route
 import { Toaster } from "@/components/ui/sonner";
 import { authAPI } from "@/lib/api";
 
-// Importaciones de páginas
+// Importaciones de páginas existentes
 import Home from "@/pages/Home";
 import Login from "@/pages/Login";
 import Register from "@/pages/Register";
@@ -15,9 +15,6 @@ import FanDashboard from "@/pages/FanDashboard";
 import Rankings from "@/pages/Rankings";
 import Explore from "@/pages/Explore";
 import CreatorProfile from "@/pages/CreatorProfile";
-// NUEVAS IMPORTACIONES - Chat Privado
-import CreatorPrivateChat from "@/pages/CreatorPrivateChat";
-import FanPrivateChat from "@/pages/FanPrivateChat";
 
 // Contexto de Autenticación
 const AuthContext = createContext(null);
@@ -173,25 +170,6 @@ function App() {
             element={
               <ProtectedRoute roles={["fan", "admin"]}>
                 <FanDashboard />
-              </ProtectedRoute>
-            }
-          />
-
-          {/* NUEVAS RUTAS - Chat Privado */}
-          <Route
-            path="/creator/chat/:fanId"
-            element={
-              <ProtectedRoute roles={["creator", "admin"]}>
-                <CreatorPrivateChat />
-              </ProtectedRoute>
-            }
-          />
-
-          <Route
-            path="/fan/chat/:creatorId"
-            element={
-              <ProtectedRoute roles={["fan", "admin"]}>
-                <FanPrivateChat />
               </ProtectedRoute>
             }
           />
