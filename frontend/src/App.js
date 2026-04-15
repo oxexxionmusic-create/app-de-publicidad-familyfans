@@ -4,26 +4,22 @@ import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-route
 import { Toaster } from "@/components/ui/sonner";
 import { authAPI } from "@/lib/api";
 
-// ===================== IMPORTS DE PÁGINAS =====================
-// Páginas públicas
+// Importaciones de páginas
 import Home from "@/pages/Home";
 import Login from "@/pages/Login";
 import Register from "@/pages/Register";
-import Rankings from "@/pages/Rankings";
-import Explore from "@/pages/Explore";
-import CreatorProfile from "@/pages/CreatorProfile";
-
-// Dashboards por rol
 import AdminDashboard from "@/pages/AdminDashboard";
 import AdvertiserDashboard from "@/pages/AdvertiserDashboard";
 import CreatorDashboard from "@/pages/CreatorDashboard";
 import FanDashboard from "@/pages/FanDashboard";
-
-// Nuevas páginas: Chat Privado
+import Rankings from "@/pages/Rankings";
+import Explore from "@/pages/Explore";
+import CreatorProfile from "@/pages/CreatorProfile";
+// NUEVAS IMPORTACIONES - Chat Privado
 import CreatorPrivateChat from "@/pages/CreatorPrivateChat";
 import FanPrivateChat from "@/pages/FanPrivateChat";
 
-// ===================== CONTEXTO DE AUTENTICACIÓN =====================
+// Contexto de Autenticación
 const AuthContext = createContext(null);
 export const useAuth = () => useContext(AuthContext);
 
@@ -81,17 +77,13 @@ function AuthProvider({ children }) {
   );
 }
 
-// ===================== RUTA PROTEGIDA POR ROL =====================
+// Ruta Protegida por Rol
 function ProtectedRoute({ children, roles }) {
   const { user, loading } = useAuth();
   const location = useLocation();
 
   if (loading) {
-    return (
-      <div className="flex items-center justify-center h-screen">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-      </div>
-    );
+    return <div className="flex items-center justify-center h-screen">Cargando...</div>;
   }
 
   if (!user) {
@@ -105,16 +97,12 @@ function ProtectedRoute({ children, roles }) {
   return children;
 }
 
-// ===================== REDIRECCIÓN INTELIGENTE AL DASHBOARD =====================
+// Redirección automática al dashboard correcto según el rol
 function DashboardRedirect() {
   const { user, loading } = useAuth();
 
   if (loading) {
-    return (
-      <div className="flex items-center justify-center h-screen">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-      </div>
-    );
+    return <div className="flex items-center justify-center h-screen">Cargando...</div>;
   }
 
   if (!user) return <Navigate to="/login" replace />;
@@ -133,13 +121,12 @@ function DashboardRedirect() {
   }
 }
 
-// ===================== COMPONENTE PRINCIPAL =====================
 function App() {
   return (
     <BrowserRouter>
       <AuthProvider>
         <Routes>
-          {/* ===================== RUTAS PÚBLICAS ===================== */}
+          {/* Rutas Públicas */}
           <Route path="/" element={<Home />} />
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
@@ -147,10 +134,10 @@ function App() {
           <Route path="/explorar" element={<Explore />} />
           <Route path="/creador/:id" element={<CreatorProfile />} />
 
-          {/* Redirección inteligente al dashboard según rol */}
+          {/* Redirección inteligente al dashboard */}
           <Route path="/dashboard" element={<DashboardRedirect />} />
 
-          {/* ===================== ADMIN ===================== */}
+          {/* Admin */}
           <Route
             path="/admin/*"
             element={
@@ -160,7 +147,7 @@ function App() {
             }
           />
 
-          {/* ===================== ANUNCIANTE ===================== */}
+          {/* Anunciante */}
           <Route
             path="/advertiser/*"
             element={
@@ -170,7 +157,7 @@ function App() {
             }
           />
 
-          {/* ===================== CREADOR ===================== */}
+          {/* Creador */}
           <Route
             path="/creator/*"
             element={
@@ -179,15 +166,18 @@ function App() {
               </ProtectedRoute>
             }
           />
-          {/* Chat Privado para Creadores */}
+
+          {/* Fan */}
           <Route
-            path="/creator/chat"
+            path="/fan/*"
             element={
-              <ProtectedRoute roles={["creator", "admin"]}>
-                <CreatorPrivateChat />
+              <ProtectedRoute roles={["fan", "admin"]}>
+                <FanDashboard />
               </ProtectedRoute>
             }
           />
+
+          {/* NUEVAS RUTAS - Chat Privado */}
           <Route
             path="/creator/chat/:fanId"
             element={
@@ -197,24 +187,6 @@ function App() {
             }
           />
 
-          {/* ===================== FAN ===================== */}
-          <Route
-            path="/fan/*"
-            element={
-              <ProtectedRoute roles={["fan", "admin"]}>
-                <FanDashboard />
-              </ProtectedRoute>
-            }
-          />
-          {/* Chat Privado para Fans */}
-          <Route
-            path="/fan/chat"
-            element={
-              <ProtectedRoute roles={["fan", "admin"]}>
-                <FanPrivateChat />
-              </ProtectedRoute>
-            }
-          />
           <Route
             path="/fan/chat/:creatorId"
             element={
@@ -224,16 +196,13 @@ function App() {
             }
           />
 
-          {/* ===================== RUTA POR DEFECTO (404) ===================== */}
+          {/* Ruta por defecto */}
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
-
-        {/* Notificaciones globales */}
-        <Toaster position="top-right" richColors closeButton />
+        <Toaster position="top-right" richColors />
       </AuthProvider>
     </BrowserRouter>
   );
 }
 
-export default App;
 export default App;
