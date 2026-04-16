@@ -1,10 +1,10 @@
 // src/pages/AdvertiserDashboard.js
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@/App';
 import { Link, useNavigate } from 'react-router-dom';
 import {
   depositsAPI, campaignsAPI, applicationsAPI, deliverablesAPI, transactionsAPI,
-  paymentInfoAPI, campaignMediaAPI, storageAPI
+  paymentInfoAPI
 } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -13,10 +13,10 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
-import { Progress } from '@/components/ui/progress';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Progress } from '@/components/ui/progress'; // Añadido
 import { toast } from 'sonner';
-import MediaUploader from '@/components/MediaUploader';
+import MediaUploader from '@/components/MediaUploader'; // Añadido
 import { API_BASE } from '@/lib/api';
 import {
   DollarSign, Plus, Upload, Megaphone, FileCheck, LogOut, Zap, Wallet, CreditCard,
@@ -87,6 +87,8 @@ export default function AdvertiserDashboard() {
   const [transactions, setTransactions] = useState([]);
   const [paymentInfo, setPaymentInfo] = useState({});
   const [loading, setLoading] = useState(true);
+  
+  // Almacenamiento (opcional, si existe el endpoint)
   const [storageUsage, setStorageUsage] = useState({ used_mb: 0, limit_mb: 100, available_mb: 100, usage_percent: 0 });
 
   // Deposit form
@@ -109,7 +111,7 @@ export default function AdvertiserDashboard() {
   });
   const [campLoading, setCampLoading] = useState(false);
   // Material multimedia subido a Cloudinary para la campaña
-  const [uploadedAudio, setUploadedAudio] = useState(null); // { public_id, url, duration, ... }
+  const [uploadedAudio, setUploadedAudio] = useState(null);
   const [uploadedImage, setUploadedImage] = useState(null);
 
   const load = useCallback(async () => {
@@ -130,12 +132,13 @@ export default function AdvertiserDashboard() {
       setTransactions(txn.data);
       setPaymentInfo(pi.data);
 
-      // Cargar uso de almacenamiento del anunciante (si existe endpoint)
+      // Cargar uso de almacenamiento si existe el endpoint
       if (user?.sub) {
         try {
+          const { storageAPI } = await import('@/lib/api');
           const storageRes = await storageAPI.getUsage(user.sub);
           setStorageUsage(storageRes.data);
-        } catch { }
+        } catch { /* Ignorar si no existe */ }
       }
 
       await refreshUser();
@@ -193,7 +196,6 @@ export default function AdvertiserDashboard() {
         max_videos_per_creator: parseInt(campForm.max_videos_per_creator) || 1,
       };
 
-      // Si se subió audio o imagen, añadir sus URLs al payload
       if (uploadedAudio) {
         payload.audio_url = uploadedAudio.url;
         payload.cloudinary_audio_public_id = uploadedAudio.public_id;
@@ -206,19 +208,19 @@ export default function AdvertiserDashboard() {
       const res = await campaignsAPI.create(payload);
       const campaignId = res.data.id;
 
-      // Si hay material multimedia adicional que requiere endpoint separado
-      // (aunque ya se enviaron en payload, este paso es opcional si el backend lo soporta)
+      // Si hay endpoint para asociar multimedia extra (opcional)
       if ((uploadedAudio || uploadedImage) && campaignId) {
-        const mediaFd = new FormData();
-        if (uploadedAudio) {
-          mediaFd.append('audio_public_id', uploadedAudio.public_id);
-          mediaFd.append('audio_url', uploadedAudio.url);
-        }
-        if (uploadedImage) {
-          mediaFd.append('image_public_id', uploadedImage.public_id);
-          mediaFd.append('image_url', uploadedImage.url);
-        }
         try {
+          const { campaignMediaAPI } = await import('@/lib/api');
+          const mediaFd = new FormData();
+          if (uploadedAudio) {
+            mediaFd.append('audio_public_id', uploadedAudio.public_id);
+            mediaFd.append('audio_url', uploadedAudio.url);
+          }
+          if (uploadedImage) {
+            mediaFd.append('image_public_id', uploadedImage.public_id);
+            mediaFd.append('image_url', uploadedImage.url);
+          }
           await campaignMediaAPI.upload(campaignId, mediaFd);
         } catch (mediaError) {
           console.warn('Error al asociar multimedia adicional:', mediaError);
@@ -319,7 +321,7 @@ export default function AdvertiserDashboard() {
             <TabsTrigger value="transactions">Transacciones</TabsTrigger>
           </TabsList>
 
-          {/* ==================== OVERVIEW ==================== */}
+          {/* OVERVIEW */}
           <TabsContent value="overview">
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
               <div className="kpi-card">
@@ -348,7 +350,7 @@ export default function AdvertiserDashboard() {
               </div>
             </div>
 
-            {/* Almacenamiento (si está habilitado para anunciantes) */}
+            {/* Almacenamiento (si está disponible) */}
             {storageUsage.limit_mb > 0 && (
               <Card className="border-border/50 mb-6">
                 <CardContent className="p-4">
@@ -380,7 +382,7 @@ export default function AdvertiserDashboard() {
             </div>
           </TabsContent>
 
-          {/* ==================== CAMPAIGNS ==================== */}
+          {/* CAMPAIGNS */}
           <TabsContent value="campaigns">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-xl font-semibold" style={{ fontFamily: 'Space Grotesk' }}>
@@ -429,7 +431,6 @@ export default function AdvertiserDashboard() {
                             <span>{(c.social_networks || []).join(', ')}</span>
                           </div>
 
-                          {/* Enlaces de Vocaroo y Referencia */}
                           {c.vocaroo_link && (
                             <div className="mt-2 text-xs">
                               <a
@@ -496,7 +497,7 @@ export default function AdvertiserDashboard() {
             )}
           </TabsContent>
 
-          {/* ==================== APPLICATIONS ==================== */}
+          {/* APPLICATIONS */}
           <TabsContent value="applications">
             <h2 className="text-xl font-semibold mb-4" style={{ fontFamily: 'Space Grotesk' }}>
               Aplicaciones de Creadores
@@ -544,7 +545,7 @@ export default function AdvertiserDashboard() {
             )}
           </TabsContent>
 
-          {/* ==================== DELIVERABLES ==================== */}
+          {/* DELIVERABLES */}
           <TabsContent value="deliverables">
             <h2 className="text-xl font-semibold mb-4" style={{ fontFamily: 'Space Grotesk' }}>
               Entregables
@@ -595,7 +596,7 @@ export default function AdvertiserDashboard() {
             )}
           </TabsContent>
 
-          {/* ==================== TRANSACTIONS ==================== */}
+          {/* TRANSACTIONS */}
           <TabsContent value="transactions">
             <h2 className="text-xl font-semibold mb-4" style={{ fontFamily: 'Space Grotesk' }}>
               Transacciones
@@ -636,7 +637,7 @@ export default function AdvertiserDashboard() {
         </Tabs>
       </div>
 
-      {/* ==================== DEPOSIT DIALOG ==================== */}
+      {/* DEPOSIT DIALOG */}
       <Dialog open={showDeposit} onOpenChange={setShowDeposit}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
@@ -738,7 +739,7 @@ export default function AdvertiserDashboard() {
         </DialogContent>
       </Dialog>
 
-      {/* ==================== CAMPAIGN DIALOG ==================== */}
+      {/* CAMPAIGN DIALOG */}
       <Dialog open={showCampaign} onOpenChange={setShowCampaign}>
         <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
@@ -929,11 +930,10 @@ export default function AdvertiserDashboard() {
               </div>
             </div>
 
-            {/* Sección Multimedia e Instrucciones */}
+            {/* Sección Multimedia */}
             <div className="border-t pt-4 mt-2">
               <Label className="text-base font-semibold">Multimedia e Instrucciones</Label>
 
-              {/* Subir audio de instrucciones (alternativa a Vocaroo) */}
               <div className="mt-3">
                 <Label className="text-sm font-medium flex items-center gap-2">
                   <Mic className="w-4 h-4 text-primary" /> Audio de Instrucciones (opcional)
@@ -947,7 +947,7 @@ export default function AdvertiserDashboard() {
                     accept="audio/*"
                     maxSizeMB={20}
                     folder={`advertisers/${user?.sub}/campaigns/audio`}
-                    resourceType="video" // Cloudinary trata audio como video
+                    resourceType="video"
                     publicIdPrefix={`campaign_audio_${Date.now()}`}
                   />
                 ) : (
@@ -971,7 +971,6 @@ export default function AdvertiserDashboard() {
                 )}
               </div>
 
-              {/* Enlace Vocaroo (mantenemos compatibilidad) */}
               <div className="mt-3">
                 <Label className="text-sm font-medium">O pegar enlace de Vocaroo</Label>
                 <Input
@@ -986,7 +985,6 @@ export default function AdvertiserDashboard() {
                 </p>
               </div>
 
-              {/* Imagen de referencia */}
               <div className="mt-3">
                 <Label className="text-sm font-medium flex items-center gap-2">
                   <ImageIcon className="w-4 h-4 text-primary" /> Imagen de Referencia (opcional)
@@ -1032,7 +1030,6 @@ export default function AdvertiserDashboard() {
                 )}
               </div>
 
-              {/* Enlace de referencia */}
               <div className="mt-3">
                 <Label className="text-sm font-medium flex items-center gap-2">
                   <ExternalLink className="w-4 h-4 text-primary" /> Enlace de Referencia (Doc, Web, etc.)
