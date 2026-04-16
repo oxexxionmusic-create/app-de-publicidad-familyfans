@@ -1,3 +1,4 @@
+# server.py
 from fastapi import FastAPI, APIRouter, Depends, HTTPException, UploadFile, File, Form, Query
 from fastapi.staticfiles import StaticFiles
 from dotenv import load_dotenv
@@ -9,14 +10,27 @@ from pydantic import BaseModel, Field
 from typing import List, Optional
 from datetime import datetime, timezone, timedelta
 from bson import ObjectId
+
+# ==================== IMPORTACIONES DE MÓDULOS PROPIOS ====================
 from auth import (
     hash_password, verify_password, create_token,
     get_current_user, require_admin, require_advertiser, require_creator
 )
+# Importar routers de Cloudinary y Media
+from cloudinary import router as cloudinary_router
+from media import router as media_router
 
 # ==================== CONFIGURACIÓN INICIAL ====================
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
+
+# Configuración de Cloudinary (ya se hace en cloudinary.py, pero aseguramos)
+import cloudinary
+cloudinary.config(
+    cloud_name=os.environ.get("CLOUDINARY_CLOUD_NAME"),
+    api_key=os.environ.get("CLOUDINARY_API_KEY"),
+    api_secret=os.environ.get("CLOUDINARY_API_SECRET")
+)
 
 mongo_url = os.environ['MONGO_URL']
 client = AsyncIOMotorClient(mongo_url)
@@ -360,6 +374,8 @@ class CampaignCreate(BaseModel):
     max_videos_per_creator: int = 1
     vocaroo_link: str = ""
     reference_link: str = ""
+    audio_url: str = ""          # Añadido para Cloudinary
+    photo_url: str = ""          # Añadido para Cloudinary
 
 @api.post("/campaigns")
 async def create_campaign(req: CampaignCreate, user=Depends(require_advertiser)):
@@ -396,8 +412,8 @@ async def create_campaign(req: CampaignCreate, user=Depends(require_advertiser))
         "influencer_level": req.influencer_level, 
         "external_link": req.external_link,
         "max_videos_per_creator": req.max_videos_per_creator,
-        "audio_url": "", 
-        "photo_url": "", 
+        "audio_url": req.audio_url, 
+        "photo_url": req.photo_url, 
         "region_warning": region_warning,
         "vocaroo_link": req.vocaroo_link,
         "reference_link": req.reference_link,
@@ -440,8 +456,6 @@ async def list_campaigns(status: str = Query(None), user=Depends(get_current_use
 async def available_campaigns(user=Depends(require_creator)):
     u = await db.users.find_one({"_id": ObjectId(user["sub"])})
     query = {"status": "active"}
-    if u.get("creator_profile"): 
-        cp = u["creator_profile"]
     
     campaigns = await db.campaigns.find(query).sort("created_at", -1).to_list(500)
     applied = await db.applications.find({"creator_id": user["sub"]}).to_list(500)
@@ -795,8 +809,6 @@ async def cleanup_expired_content():
     """Limpieza automática de contenido expirado (corre cada 24 horas)"""
     while True:
         try:
-            from datetime import datetime
-            
             # Encontrar contenido expirado
             expired = await db.media_content.find({
                 "expires_at": {"$lt": datetime.now()},
@@ -804,7 +816,6 @@ async def cleanup_expired_content():
             }).to_list(100)
             
             for media in expired:
-                # Liberar cuota de almacenamiento
                 size_mb = media.get("size_mb", 0)
                 creator_id = media.get("creator_id")
                 
@@ -825,23 +836,16 @@ async def cleanup_expired_content():
                 except:
                     pass
                 
-                # Marcar como eliminado en DB
                 await db.media_content.update_one(
                     {"_id": media["_id"]},
-                    {"$set": {
-                        "is_deleted": True, 
-                        "deleted_at": datetime.now().isoformat()
-                    }}
+                    {"$set": {"is_deleted": True, "deleted_at": datetime.now().isoformat()}}
                 )
             
             logger.info(f"Limpieza completada: {len(expired)} archivos eliminados")
-            
-            # Esperar 24 horas
             await asyncio.sleep(86400)
-            
         except Exception as e:
             logger.error(f"Error en cleanup job: {e}")
-            await asyncio.sleep(3600)  # Reintentar en 1 hora
+            await asyncio.sleep(3600)
 
 # ==================== KYC ====================
 @api.post("/kyc")
@@ -1895,7 +1899,11 @@ async def admin_set_level(user_id: str, level: str = Form(...), user=Depends(req
 
 # ==================== STATIC FILES & MIDDLEWARE ====================
 app.mount("/api/uploads", StaticFiles(directory=str(UPLOAD_DIR)), name="uploads")
+
+# Incluir routers de módulos externos
 app.include_router(api)
+app.include_router(cloudinary_router)   # Rutas de /api/cloudinary
+app.include_router(media_router)        # Rutas de /api/media
 
 app.add_middleware(
     CORSMiddleware,
