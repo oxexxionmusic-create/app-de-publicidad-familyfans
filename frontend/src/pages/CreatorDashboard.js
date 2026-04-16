@@ -1,12 +1,12 @@
 // src/pages/CreatorDashboard.js
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useAuth } from '@/App';
 import { Link, useNavigate } from 'react-router-dom';
 import {
   authAPI, campaignsAPI, applicationsAPI, deliverablesAPI, transactionsAPI,
   withdrawalsAPI, kycAPI, subscriptionsAPI, premiumContentAPI, musicFinancingAPI,
   curatorAPI, referralsAPI, levelRequestsAPI, profilePhotoAPI, deliverableActionsAPI,
-  mediaAPI, storageAPI, // <-- NUEVOS
+  mediaAPI, storageAPI, chatAPI
 } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -15,28 +15,25 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Progress } from '@/components/ui/progress';
 import { toast } from 'sonner';
-import MediaUploader from '@/components/MediaUploader'; // <-- NUEVO COMPONENTE
+import MediaUploader from '@/components/MediaUploader';
 import {
   Wallet, Megaphone, FileCheck, DollarSign, ShieldCheck, Music, Crown, Upload, Plus,
   LogOut, Zap, Eye, Users, TrendingUp, CreditCard, ArrowRight, CheckCircle2, Image, Video,
-  Share2, Camera, Award, Clock, ExternalLink, HardDrive, Trash2, Play, File
+  Share2, Camera, Award, Clock, ExternalLink, HardDrive, Cloud, Lock, Unlock
 } from 'lucide-react';
 
 function StatusBadge({ status }) {
   const map = {
-    pending: 'status-badge-pending', approved: 'status-badge-approved',
-    rejected: 'status-badge-rejected', active: 'status-badge-active',
-    completed: 'status-badge-approved', cancelled: 'status-badge-rejected',
-    accepted: 'status-badge-approved', verified: 'status-badge-approved',
-    none: 'status-badge-pending'
+    pending: 'status-badge-pending', approved: 'status-badge-approved', rejected: 'status-badge-rejected',
+    active: 'status-badge-active', completed: 'status-badge-approved', cancelled: 'status-badge-rejected',
+    accepted: 'status-badge-approved', verified: 'status-badge-approved', none: 'status-badge-pending'
   };
   const labels = {
-    pending: 'Pendiente', approved: 'Aprobado', rejected: 'Rechazado',
-    active: 'Activo', completed: 'Completado', cancelled: 'Cancelado',
-    accepted: 'Aceptado', verified: 'Verificado', none: 'Sin KYC'
+    pending: 'Pendiente', approved: 'Aprobado', rejected: 'Rechazado', active: 'Activo',
+    completed: 'Completado', cancelled: 'Cancelado', accepted: 'Aceptado', verified: 'Verificado', none: 'Sin KYC'
   };
   return <span className={map[status] || 'status-badge-pending'}>{labels[status] || status}</span>;
 }
@@ -52,14 +49,16 @@ export default function CreatorDashboard() {
   const [withdrawals, setWithdrawals] = useState([]);
   const [subscriptions, setSubscriptions] = useState([]);
   const [loading, setLoading] = useState(true);
-
-  // NUEVO: Estado para medios subidos a Cloudinary
-  const [mediaItems, setMediaItems] = useState([]);
   const [storageUsage, setStorageUsage] = useState({ used_mb: 0, limit_mb: 600, available_mb: 600, usage_percent: 0 });
 
-  // Profile form (sin cambios)
+  // Profile form
   const [showProfile, setShowProfile] = useState(false);
-  const [profileForm, setProfileForm] = useState({ content_type: '', region: '', gender: '', phone: '', country: '', youtube_url: '', tiktok_url: '', instagram_url: '', facebook_url: '', spotify_url: '', apple_music_url: '', bio: '', creator_level: 'standard', niche: '', avg_views: 0, followers: 0 });
+  const [profileForm, setProfileForm] = useState({
+    content_type: '', region: '', gender: '', phone: '', country: '',
+    youtube_url: '', tiktok_url: '', instagram_url: '', facebook_url: '',
+    spotify_url: '', apple_music_url: '', bio: '', creator_level: 'standard',
+    niche: '', avg_views: 0, followers: 0
+  });
   const [profileScreenshot, setProfileScreenshot] = useState(null);
 
   // Deliverable form
@@ -67,147 +66,350 @@ export default function CreatorDashboard() {
   const [delForm, setDelForm] = useState({ application_id: '', video_url: '', notes: '' });
   const [delScreenshot, setDelScreenshot] = useState(null);
 
-  // KYC, Withdrawal, Premium, Content (ahora con Cloudinary), Financing, Curator, Level...
+  // KYC
   const [showKYC, setShowKYC] = useState(false);
   const [kycDoc, setKycDoc] = useState(null);
   const [kycSelfie, setKycSelfie] = useState(null);
 
+  // Withdrawal
   const [showWithdrawal, setShowWithdrawal] = useState(false);
   const [wdForm, setWdForm] = useState({ amount: '', method: 'crypto', wallet_address: '', bank_details: '' });
 
+  // Premium
   const [showPremium, setShowPremium] = useState(false);
   const [premiumPrice, setPremiumPrice] = useState('');
   const [premiumDesc, setPremiumDesc] = useState('');
 
-  // Contenido Premium: ahora con soporte para Cloudinary
+  // Premium Content
   const [showContent, setShowContent] = useState(false);
-  const [contentForm, setContentForm] = useState({ content_type: 'post', title: '', description: '' });
-  const [contentMediaResult, setContentMediaResult] = useState(null); // resultado de Cloudinary
+  const [contentForm, setContentForm] = useState({
+    content_type: 'post', title: '', description: '', media_url: ''
+  });
+  const [uploadedMedia, setUploadedMedia] = useState(null); // { public_id, url, type, size_mb, duration? }
 
+  // Music Financing
   const [showFinancing, setShowFinancing] = useState(false);
-  const [finForm, setFinForm] = useState({ title: '', description: '', amount_requested: '', genre: '', streaming_stats: '' });
+  const [finForm, setFinForm] = useState({
+    title: '', description: '', amount_requested: '', genre: '', streaming_stats: ''
+  });
   const [finAudio, setFinAudio] = useState(null);
 
+  // Curator
   const [showPlaylist, setShowPlaylist] = useState(false);
-  const [playlistForm, setPlaylistForm] = useState({ playlist_url: '', playlist_name: '', song_count: 10, followers: 0 });
+  const [playlistForm, setPlaylistForm] = useState({
+    playlist_url: '', playlist_name: '', song_count: 10, followers: 0
+  });
   const [playlists, setPlaylists] = useState([]);
   const [showCuratorPay, setShowCuratorPay] = useState(false);
-  const [curatorPayForm, setCuratorPayForm] = useState({ playlist_id: '', listens_count: 0, evidence_description: '' });
+  const [curatorPayForm, setCuratorPayForm] = useState({
+    playlist_id: '', listens_count: 0, evidence_description: ''
+  });
   const [curatorEvidence, setCuratorEvidence] = useState(null);
   const [curatorRequests, setCuratorRequests] = useState([]);
 
+  // Referrals
   const [referralInfo, setReferralInfo] = useState(null);
 
+  // Level Request
   const [showLevelReq, setShowLevelReq] = useState(false);
-  const [levelReqForm, setLevelReqForm] = useState({ requested_level: 'micro', justification: '', portfolio_links: '' });
+  const [levelReqForm, setLevelReqForm] = useState({
+    requested_level: 'micro', justification: '', portfolio_links: ''
+  });
 
-  // Cargar todos los datos
+  // My Premium Content list
+  const [myPremiumContent, setMyPremiumContent] = useState([]);
+
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [camp, app, del, txn, wd, sub] = await Promise.all([
-        campaignsAPI.available(), applicationsAPI.list(), deliverablesAPI.list(),
-        transactionsAPI.list(), withdrawalsAPI.list(), subscriptionsAPI.list()
+      const [
+        camp, app, del, txn, wd, sub, myContent
+      ] = await Promise.all([
+        campaignsAPI.available(),
+        applicationsAPI.list(),
+        deliverablesAPI.list(),
+        transactionsAPI.list(),
+        withdrawalsAPI.list(),
+        subscriptionsAPI.list(),
+        premiumContentAPI.get(user?.sub).catch(() => ({ data: [] }))
       ]);
-      setCampaigns(camp.data); setApplications(app.data); setDeliverables(del.data);
-      setTransactions(txn.data); setWithdrawals(wd.data); setSubscriptions(sub.data);
+      setCampaigns(camp.data);
+      setApplications(app.data);
+      setDeliverables(del.data);
+      setTransactions(txn.data);
+      setWithdrawals(wd.data);
+      setSubscriptions(sub.data);
+      setMyPremiumContent(myContent.data || []);
+
       try {
         const [pl, cr] = await Promise.all([curatorAPI.playlists(), curatorAPI.requests()]);
-        setPlaylists(pl.data); setCuratorRequests(cr.data);
-      } catch {}
-      try { const ref = await referralsAPI.get(); setReferralInfo(ref.data); } catch {}
-      
-      // NUEVO: Cargar medios y almacenamiento
-      if (user?.id) {
+        setPlaylists(pl.data);
+        setCuratorRequests(cr.data);
+      } catch { }
+
+      try {
+        const ref = await referralsAPI.get();
+        setReferralInfo(ref.data);
+      } catch { }
+
+      // Cargar uso de almacenamiento
+      if (user?.sub) {
         try {
-          const mediaRes = await mediaAPI.list(); // Asumiendo que existe endpoint /media?creator_id=...
-          setMediaItems(mediaRes.data);
-        } catch {}
-        try {
-          const storageRes = await storageAPI.getUsage(user.id);
+          const storageRes = await storageAPI.getUsage(user.sub);
           setStorageUsage(storageRes.data);
-        } catch {}
+        } catch { }
       }
-      
+
       await refreshUser();
     } catch (error) {
-      console.error('Error loading creator data:', error);
+      console.error('Error loading data:', error);
     }
     setLoading(false);
-  }, [refreshUser, user?.id]);
+  }, [refreshUser, user?.sub]);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    load();
+  }, [load]);
 
   useEffect(() => {
     if (user?.creator_profile) {
       const cp = user.creator_profile;
       setProfileForm({
-        content_type: cp.content_type || '', region: cp.region || '', gender: cp.gender || '',
-        phone: user.phone || '', country: user.country || '',
-        youtube_url: cp.social_links?.youtube || '', tiktok_url: cp.social_links?.tiktok || '',
-        instagram_url: cp.social_links?.instagram || '', facebook_url: cp.social_links?.facebook || '',
-        spotify_url: cp.social_links?.spotify || '', apple_music_url: cp.social_links?.apple_music || '',
-        bio: cp.bio || '', creator_level: cp.creator_level || 'standard', niche: cp.niche || '',
-        avg_views: cp.avg_views || 0, followers: cp.followers || 0,
+        content_type: cp.content_type || '',
+        region: cp.region || '',
+        gender: cp.gender || '',
+        phone: user.phone || '',
+        country: user.country || '',
+        youtube_url: cp.social_links?.youtube || '',
+        tiktok_url: cp.social_links?.tiktok || '',
+        instagram_url: cp.social_links?.instagram || '',
+        facebook_url: cp.social_links?.facebook || '',
+        spotify_url: cp.social_links?.spotify || '',
+        apple_music_url: cp.social_links?.apple_music || '',
+        bio: cp.bio || '',
+        creator_level: cp.creator_level || 'standard',
+        niche: cp.niche || '',
+        avg_views: cp.avg_views || 0,
+        followers: cp.followers || 0,
       });
     }
   }, [user]);
 
-  // Handlers existentes (handleSaveProfile, handleApply, handleDeliverable, etc.) se mantienen sin cambios
-  // ... (omitidos por brevedad, pero se mantienen igual que en el código original)
-  const handleSaveProfile = async (e) => { /* ... igual ... */ };
-  const handleApply = async (campaignId) => { /* ... igual ... */ };
-  const handleDeliverable = async (e) => { /* ... igual ... */ };
-  const handleKYC = async (e) => { /* ... igual ... */ };
-  const handleWithdrawal = async (e) => { /* ... igual ... */ };
-  const handleSetPremium = async (e) => { /* ... igual ... */ };
-  const handleFinancing = async (e) => { /* ... igual ... */ };
-  const handleRegisterPlaylist = async (e) => { /* ... igual ... */ };
-  const handleCuratorPayment = async (e) => { /* ... igual ... */ };
-  const handleLevelRequest = async (e) => { /* ... igual ... */ };
-  const handleProfilePhoto = async (e) => { /* ... igual ... */ };
-  const handleClaimBonus = async (delId) => { /* ... igual ... */ };
-
-  // NUEVO: Handler para subir contenido premium (usando Cloudinary)
-  const handleAddContent = async (e) => {
+  const handleSaveProfile = async (e) => {
     e.preventDefault();
-    if (!contentMediaResult) {
-      toast.error('Debes subir un archivo multimedia');
-      return;
-    }
     try {
-      const payload = {
-        content_type: contentForm.content_type,
-        title: contentForm.title,
-        description: contentForm.description,
-        // Enviamos los datos de Cloudinary al backend para guardar en MongoDB
-        cloudinary_public_id: contentMediaResult.public_id,
-        cloudinary_url: contentMediaResult.url,
-        secure_url: contentMediaResult.url, // Cloudinary ya devuelve secure_url
-        type: contentForm.content_type === 'video' ? 'video' : 'image',
-        size_mb: (contentMediaResult.bytes / (1024 * 1024)).toFixed(2),
-        duration_seconds: contentMediaResult.duration || null,
-      };
-      await premiumContentAPI.create(payload); // El backend espera estos campos ahora
-      toast.success('Contenido premium creado');
-      setShowContent(false);
-      setContentForm({ content_type: 'post', title: '', description: '' });
-      setContentMediaResult(null);
-      load(); // Recargar para ver el nuevo contenido
+      const fd = new FormData();
+      Object.entries(profileForm).forEach(([k, v]) => fd.append(k, v));
+      if (profileScreenshot) fd.append('metrics_screenshot', profileScreenshot);
+      await authAPI.saveCreatorProfile(fd);
+      toast.success('Perfil actualizado');
+      setShowProfile(false);
+      await refreshUser();
     } catch (err) {
-      toast.error(err.response?.data?.detail || 'Error al crear contenido');
+      toast.error(err.response?.data?.detail || 'Error');
     }
   };
 
-  // NUEVO: Eliminar un medio
-  const handleDeleteMedia = async (publicId, resourceType) => {
-    if (!window.confirm('¿Eliminar este archivo permanentemente?')) return;
+  const handleApply = async (campaignId) => {
     try {
-      await mediaAPI.deleteMedia(publicId, resourceType);
-      toast.success('Archivo eliminado');
+      const fd = new FormData();
+      fd.append('campaign_id', campaignId);
+      await applicationsAPI.create(fd);
+      toast.success('Aplicación enviada');
       load();
     } catch (err) {
-      toast.error('Error al eliminar');
+      toast.error(err.response?.data?.detail || 'Error');
+    }
+  };
+
+  const handleDeliverable = async (e) => {
+    e.preventDefault();
+    try {
+      const fd = new FormData();
+      fd.append('application_id', delForm.application_id);
+      fd.append('video_url', delForm.video_url);
+      fd.append('notes', delForm.notes);
+      if (delScreenshot) fd.append('screenshot', delScreenshot);
+      await deliverablesAPI.submit(fd);
+      toast.success('Entregable enviado');
+      setShowDeliverable(false);
+      load();
+    } catch (err) {
+      toast.error(err.response?.data?.detail || 'Error');
+    }
+  };
+
+  const handleKYC = async (e) => {
+    e.preventDefault();
+    if (!kycDoc) {
+      toast.error('Sube tu documento de identidad');
+      return;
+    }
+    try {
+      const fd = new FormData();
+      fd.append('document', kycDoc);
+      if (kycSelfie) fd.append('selfie', kycSelfie);
+      await kycAPI.submit(fd);
+      toast.success('KYC enviado para revisión');
+      setShowKYC(false);
+      await refreshUser();
+    } catch (err) {
+      toast.error(err.response?.data?.detail || 'Error');
+    }
+  };
+
+  const handleWithdrawal = async (e) => {
+    e.preventDefault();
+    try {
+      await withdrawalsAPI.request({
+        amount: parseFloat(wdForm.amount),
+        method: wdForm.method,
+        wallet_address: wdForm.wallet_address,
+        bank_details: wdForm.bank_details,
+      });
+      toast.success('Solicitud de retiro enviada');
+      setShowWithdrawal(false);
+      load();
+    } catch (err) {
+      toast.error(err.response?.data?.detail || 'Error');
+    }
+  };
+
+  const handleSetPremium = async (e) => {
+    e.preventDefault();
+    try {
+      await subscriptionsAPI.setPlan({
+        price: parseFloat(premiumPrice),
+        description: premiumDesc
+      });
+      toast.success('Plan premium actualizado');
+      setShowPremium(false);
+      await refreshUser();
+    } catch (err) {
+      toast.error(err.response?.data?.detail || 'Error');
+    }
+  };
+
+  const handleAddContent = async (e) => {
+    e.preventDefault();
+    if (!uploadedMedia && !contentForm.media_url) {
+      toast.error('Debes subir un archivo o proporcionar una URL');
+      return;
+    }
+    try {
+      const fd = new FormData();
+      fd.append('content_type', contentForm.content_type);
+      fd.append('title', contentForm.title);
+      fd.append('description', contentForm.description);
+      if (uploadedMedia) {
+        fd.append('media_url', uploadedMedia.url);
+        fd.append('cloudinary_public_id', uploadedMedia.public_id);
+        fd.append('media_type', uploadedMedia.resource_type);
+        fd.append('size_mb', uploadedMeta?.size_mb || (uploadedMedia.bytes / (1024 * 1024)).toFixed(2));
+        if (uploadedMedia.duration) fd.append('duration_seconds', uploadedMedia.duration);
+      } else {
+        fd.append('media_url', contentForm.media_url);
+      }
+      await premiumContentAPI.create(fd);
+      toast.success('Contenido premium creado');
+      setShowContent(false);
+      setUploadedMedia(null);
+      setContentForm({ content_type: 'post', title: '', description: '', media_url: '' });
+      load();
+    } catch (err) {
+      toast.error(err.response?.data?.detail || 'Error');
+    }
+  };
+
+  const handleFinancing = async (e) => {
+    e.preventDefault();
+    try {
+      const fd = new FormData();
+      fd.append('title', finForm.title);
+      fd.append('description', finForm.description);
+      fd.append('amount_requested', finForm.amount_requested);
+      fd.append('genre', finForm.genre);
+      fd.append('streaming_stats', finForm.streaming_stats);
+      if (finAudio) fd.append('audio', finAudio);
+      await musicFinancingAPI.request(fd);
+      toast.success('Solicitud de financiamiento enviada');
+      setShowFinancing(false);
+    } catch (err) {
+      toast.error(err.response?.data?.detail || 'Error');
+    }
+  };
+
+  const handleRegisterPlaylist = async (e) => {
+    e.preventDefault();
+    try {
+      const fd = new FormData();
+      fd.append('playlist_url', playlistForm.playlist_url);
+      fd.append('playlist_name', playlistForm.playlist_name);
+      fd.append('song_count', playlistForm.song_count);
+      fd.append('followers', playlistForm.followers);
+      await curatorAPI.registerPlaylist(fd);
+      toast.success('Playlist registrada');
+      setShowPlaylist(false);
+      load();
+    } catch (err) {
+      toast.error(err.response?.data?.detail || 'Error');
+    }
+  };
+
+  const handleCuratorPayment = async (e) => {
+    e.preventDefault();
+    try {
+      const fd = new FormData();
+      fd.append('playlist_id', curatorPayForm.playlist_id);
+      fd.append('listens_count', curatorPayForm.listens_count);
+      fd.append('evidence_description', curatorPayForm.evidence_description);
+      if (curatorEvidence) fd.append('evidence', curatorEvidence);
+      await curatorAPI.requestPayment(fd);
+      toast.success('Solicitud de pago enviada');
+      setShowCuratorPay(false);
+      load();
+    } catch (err) {
+      toast.error(err.response?.data?.detail || 'Error');
+    }
+  };
+
+  const handleLevelRequest = async (e) => {
+    e.preventDefault();
+    try {
+      const fd = new FormData();
+      fd.append('requested_level', levelReqForm.requested_level);
+      fd.append('justification', levelReqForm.justification);
+      fd.append('portfolio_links', levelReqForm.portfolio_links);
+      await levelRequestsAPI.request(fd);
+      toast.success('Solicitud de nivel enviada');
+      setShowLevelReq(false);
+      await refreshUser();
+    } catch (err) {
+      toast.error(err.response?.data?.detail || 'Error');
+    }
+  };
+
+  const handleProfilePhoto = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    try {
+      const fd = new FormData();
+      fd.append('photo', file);
+      await profilePhotoAPI.upload(fd);
+      toast.success('Foto actualizada');
+      await refreshUser();
+    } catch (err) {
+      toast.error('Error al subir foto');
+    }
+  };
+
+  const handleClaimBonus = async (delId) => {
+    try {
+      await deliverableActionsAPI.claimBonus(delId);
+      toast.success('Bonus reclamado');
+      load();
+    } catch (err) {
+      toast.error(err.response?.data?.detail || 'Error');
     }
   };
 
@@ -216,19 +418,23 @@ export default function CreatorDashboard() {
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Top bar (sin cambios) */}
+      {/* Header */}
       <div className="border-b border-border/50">
         <div className="page-container flex items-center justify-between py-4">
           <div className="flex items-center gap-3">
             <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center">
               <Zap className="w-5 h-5 text-primary-foreground" />
             </div>
-            <span className="font-semibold" style={{fontFamily:'Space Grotesk'}}>Family Fans Mony</span>
+            <span className="font-semibold" style={{ fontFamily: 'Space Grotesk' }}>Family Fans Mony</span>
           </div>
           <div className="flex items-center gap-4">
             <div className="hidden sm:flex items-center gap-2 text-sm">
               <span className="text-muted-foreground">Creador</span>
-              {user?.is_top10 && <span className="text-xs bg-[hsl(43,96%,56%)]/20 text-[hsl(43,96%,56%)] px-2 py-0.5 rounded-full">Top 10</span>}
+              {user?.is_top10 && (
+                <span className="text-xs bg-[hsl(43,96%,56%)]/20 text-[hsl(43,96%,56%)] px-2 py-0.5 rounded-full">
+                  Top 10
+                </span>
+              )}
               <span className="font-semibold">${(user?.balance || 0).toFixed(2)}</span>
               <StatusBadge status={user?.kyc_status || 'none'} />
             </div>
@@ -247,49 +453,48 @@ export default function CreatorDashboard() {
             <TabsTrigger value="applications">Mis Aplicaciones</TabsTrigger>
             <TabsTrigger value="earnings">Ganancias</TabsTrigger>
             <TabsTrigger value="premium">Premium</TabsTrigger>
-            <TabsTrigger value="media">Medios</TabsTrigger> {/* NUEVA PESTAÑA */}
             <TabsTrigger value="curator">Curador</TabsTrigger>
             <TabsTrigger value="profile">Perfil</TabsTrigger>
           </TabsList>
 
-          {/* ==================== OVERVIEW (se añade tarjeta de almacenamiento) ==================== */}
+          {/* ==================== OVERVIEW ==================== */}
           <TabsContent value="overview">
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
               <div className="kpi-card">
                 <p className="text-xs text-muted-foreground mb-1">Saldo</p>
-                <p className="text-2xl font-semibold tabular-nums text-primary" style={{fontFamily:'Space Grotesk'}}>
+                <p className="text-2xl font-semibold tabular-nums text-primary" style={{ fontFamily: 'Space Grotesk' }}>
                   ${(user?.balance || 0).toFixed(2)}
                 </p>
               </div>
               <div className="kpi-card">
                 <p className="text-xs text-muted-foreground mb-1">Ganancias Totales</p>
-                <p className="text-2xl font-semibold tabular-nums" style={{fontFamily:'Space Grotesk'}}>
+                <p className="text-2xl font-semibold tabular-nums" style={{ fontFamily: 'Space Grotesk' }}>
                   ${totalEarnings.toFixed(2)}
                 </p>
               </div>
               <div className="kpi-card">
                 <p className="text-xs text-muted-foreground mb-1">Aplicaciones Activas</p>
-                <p className="text-2xl font-semibold tabular-nums" style={{fontFamily:'Space Grotesk'}}>
+                <p className="text-2xl font-semibold tabular-nums" style={{ fontFamily: 'Space Grotesk' }}>
                   {acceptedApps.length}
                 </p>
               </div>
               <div className="kpi-card">
                 <p className="text-xs text-muted-foreground mb-1">Suscriptores</p>
-                <p className="text-2xl font-semibold tabular-nums" style={{fontFamily:'Space Grotesk'}}>
+                <p className="text-2xl font-semibold tabular-nums" style={{ fontFamily: 'Space Grotesk' }}>
                   {subscriptions.length}
                 </p>
               </div>
             </div>
 
-            {/* NUEVO: Tarjeta de almacenamiento Cloudinary */}
-            <Card className="mb-6 border-border/50">
+            {/* Almacenamiento */}
+            <Card className="border-border/50 mb-6">
               <CardContent className="p-4">
                 <div className="flex items-center gap-2 mb-2">
-                  <HardDrive className="w-5 h-5 text-primary" />
-                  <h3 className="font-semibold text-sm" style={{fontFamily:'Space Grotesk'}}>Almacenamiento Cloudinary</h3>
+                  <HardDrive className="w-4 h-4 text-primary" />
+                  <p className="font-semibold text-sm">Almacenamiento en la nube</p>
                 </div>
-                <div className="space-y-2">
-                  <div className="flex justify-between text-sm">
+                <div className="space-y-1">
+                  <div className="flex justify-between text-xs">
                     <span>Usado: {storageUsage.used_mb} MB</span>
                     <span>Límite: {storageUsage.limit_mb} MB</span>
                   </div>
@@ -330,29 +535,227 @@ export default function CreatorDashboard() {
               </label>
             </div>
 
-            {/* Referidos y permanencia (sin cambios) */}
-            {/* ... (código original de referidos y permanencia) ... */}
+            {referralInfo && (
+              <Card className="border-border/50 mb-6">
+                <CardContent className="p-4">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Share2 className="w-5 h-5 text-primary" />
+                    <p className="font-semibold text-sm" style={{ fontFamily: 'Space Grotesk' }}>Programa de Referidos</p>
+                  </div>
+                  <div className="flex items-center gap-3 p-3 rounded-lg bg-[hsl(var(--surface-2))]">
+                    <div className="flex-1">
+                      <p className="text-xs text-muted-foreground">Tu código de referido:</p>
+                      <p className="font-mono text-primary font-semibold">{referralInfo.referral_code}</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-xs text-muted-foreground">{referralInfo.referrals_count} referidos</p>
+                      <p className="text-sm font-semibold tabular-nums text-[hsl(152,58%,44%)]">
+                        ${referralInfo.total_referral_earnings?.toFixed(4)} ganados
+                      </p>
+                    </div>
+                    <Button size="sm" variant="outline" onClick={() => {
+                      navigator.clipboard.writeText(referralInfo.referral_code);
+                      toast.success('Código copiado');
+                    }}>
+                      Copiar
+                    </Button>
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-2">
+                    Ganas 5% de la comisión de la plataforma por cada ingreso de tus referidos, de por vida.
+                  </p>
+                </CardContent>
+              </Card>
+            )}
+
+            {deliverables.filter(d => d.status === 'approved' && !d.final_payment_released).length > 0 && (
+              <Card className="border-primary/30 mb-6">
+                <CardContent className="p-4">
+                  <div className="flex items-center gap-2 mb-3">
+                    <Clock className="w-5 h-5 text-primary" />
+                    <p className="font-semibold text-sm">Campañas Activas - Tiempo de Permanencia</p>
+                  </div>
+                  {deliverables.filter(d => d.status === 'approved' && !d.final_payment_released).map(d => {
+                    const endDate = d.permanence_end ? new Date(d.permanence_end) : null;
+                    const daysLeft = endDate ? Math.max(0, Math.ceil((endDate - new Date()) / (1000 * 60 * 60 * 24))) : 0;
+                    return (
+                      <div key={d.id} className="flex items-center justify-between p-2 rounded-lg bg-[hsl(var(--surface-2))] mb-1">
+                        <div>
+                          <p className="text-sm">{d.creator_name}</p>
+                          <p className="text-xs text-muted-foreground">
+                            40% liberado · 60% pendiente{d.held_payout ? ` ($${d.held_payout})` : ''}
+                          </p>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-sm font-semibold tabular-nums text-primary">{daysLeft} días restantes</p>
+                          {!d.bonus_claimed && (
+                            <Button size="sm" variant="outline" className="h-6 text-xs mt-1" onClick={() => handleClaimBonus(d.id)}>
+                              Reclamar Bonus
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </CardContent>
+              </Card>
+            )}
+
+            {!user?.creator_profile && (
+              <Card className="border-[hsl(var(--status-pending))]/30 bg-[hsl(var(--status-pending))]/5 mb-6">
+                <CardContent className="p-4 flex items-center justify-between">
+                  <p className="text-sm">Completa tu perfil de creador para aplicar a campañas</p>
+                  <Button size="sm" onClick={() => setShowProfile(true)}>Completar Perfil</Button>
+                </CardContent>
+              </Card>
+            )}
           </TabsContent>
 
-          {/* ==================== CAMPAIGNS (sin cambios) ==================== */}
+          {/* ==================== CAMPAIGNS ==================== */}
           <TabsContent value="campaigns">
-            {/* ... (código original) ... */}
+            <h2 className="text-xl font-semibold mb-4" style={{ fontFamily: 'Space Grotesk' }}>Campañas Disponibles</h2>
+            {campaigns.length === 0 ? (
+              <Card className="border-border/50">
+                <CardContent className="p-8 text-center text-muted-foreground">No hay campañas disponibles</CardContent>
+              </Card>
+            ) : (
+              <div className="space-y-3">
+                {campaigns.map(c => (
+                  <Card key={c.id} className="border-border/50 card-hover">
+                    <CardContent className="p-4">
+                      <div className="flex items-start justify-between">
+                        <div className="flex-1">
+                          <p className="font-semibold">{c.title}</p>
+                          <p className="text-xs text-muted-foreground">{c.description}</p>
+
+                          {c.vocaroo_link && (
+                            <div className="mt-3 p-3 rounded-lg bg-[hsl(var(--surface-2))] border border-border/50">
+                              <div className="flex items-center gap-2 mb-2">
+                                <Music className="w-4 h-4 text-primary" />
+                                <p className="text-sm font-medium">🎧 Instrucciones de Audio del Anunciante</p>
+                              </div>
+                              <a
+                                href={c.vocaroo_link}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors text-sm"
+                              >
+                                <ExternalLink className="w-4 h-4" />
+                                Escuchar Instrucciones de Voz
+                              </a>
+                              <p className="text-xs text-muted-foreground mt-2">
+                                Haz clic para abrir el audio en Vocaroo
+                              </p>
+                            </div>
+                          )}
+
+                          {c.reference_link && (
+                            <div className="mt-2">
+                              <a
+                                href={c.reference_link}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-1.5 text-xs text-primary hover:underline"
+                              >
+                                <ExternalLink className="w-3.5 h-3.5" />
+                                🔗 Enlace de Referencia
+                              </a>
+                            </div>
+                          )}
+
+                          <div className="flex items-center gap-4 mt-3 text-xs text-muted-foreground">
+                            <span>Pago/video: <b className="text-primary">${c.payment_per_video}</b></span>
+                            <span>Videos: {c.videos_requested - c.videos_completed} restantes</span>
+                            <span>{c.niche}</span>
+                            <span>{c.region}</span>
+                            <span>{(c.social_networks || []).join(', ')}</span>
+                          </div>
+                          {c.bonus_amount > 0 && (
+                            <p className="text-xs text-[hsl(43,96%,56%)] mt-1">
+                              Bonus: ${c.bonus_amount} si superas {c.bonus_threshold_views} vistas
+                            </p>
+                          )}
+                        </div>
+                        {c.already_applied ? (
+                          <span className="status-badge-active">Aplicado</span>
+                        ) : (
+                          <Button size="sm" onClick={() => handleApply(c.id)} data-testid="campaign-apply-button">
+                            <ArrowRight className="w-4 h-4 mr-1" /> Aplicar
+                          </Button>
+                        )}
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            )}
           </TabsContent>
 
-          {/* ==================== APPLICATIONS (sin cambios) ==================== */}
+          {/* ==================== APPLICATIONS ==================== */}
           <TabsContent value="applications">
-            {/* ... (código original) ... */}
+            <h2 className="text-xl font-semibold mb-4" style={{ fontFamily: 'Space Grotesk' }}>Mis Aplicaciones</h2>
+            {applications.length === 0 ? (
+              <Card className="border-border/50">
+                <CardContent className="p-8 text-center text-muted-foreground">Sin aplicaciones</CardContent>
+              </Card>
+            ) : (
+              <div className="space-y-2">
+                {applications.map(a => (
+                  <Card key={a.id} className="border-border/50">
+                    <CardContent className="p-4 flex items-center justify-between">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <p className="font-medium text-sm">{a.campaign_title}</p>
+                          <StatusBadge status={a.status} />
+                        </div>
+                        <p className="text-xs text-muted-foreground">{new Date(a.created_at).toLocaleDateString('es-ES')}</p>
+                      </div>
+                      {a.status === 'accepted' && (
+                        <Button size="sm" onClick={() => {
+                          setDelForm({ ...delForm, application_id: a.id });
+                          setShowDeliverable(true);
+                        }}>
+                          <Upload className="w-4 h-4 mr-1" /> Subir Entregable
+                        </Button>
+                      )}
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            )}
           </TabsContent>
 
-          {/* ==================== EARNINGS (sin cambios) ==================== */}
+          {/* ==================== EARNINGS ==================== */}
           <TabsContent value="earnings">
-            {/* ... (código original) ... */}
+            <h2 className="text-xl font-semibold mb-4" style={{ fontFamily: 'Space Grotesk' }}>Ganancias y Transacciones</h2>
+            <div className="grid grid-cols-2 gap-4 mb-4">
+              <div className="kpi-card">
+                <p className="text-xs text-muted-foreground mb-1">Total Ganado</p>
+                <p className="text-xl font-semibold tabular-nums text-[hsl(152,58%,44%)]">${totalEarnings.toFixed(2)}</p>
+              </div>
+              <div className="kpi-card">
+                <p className="text-xs text-muted-foreground mb-1">Retiros Realizados</p>
+                <p className="text-xl font-semibold tabular-nums">{withdrawals.filter(w => w.status === 'approved').length}</p>
+              </div>
+            </div>
+            <div className="space-y-1">
+              {transactions.map(t => (
+                <div key={t.id} className="flex items-center justify-between p-3 rounded-lg bg-[hsl(var(--surface-2))]">
+                  <div>
+                    <p className="text-sm">{t.description}</p>
+                    <p className="text-xs text-muted-foreground">{new Date(t.created_at).toLocaleDateString('es-ES')}</p>
+                  </div>
+                  <p className={`font-semibold tabular-nums text-sm ${t.amount >= 0 ? 'text-[hsl(152,58%,44%)]' : 'text-[hsl(0,72%,52%)]'}`}>
+                    {t.amount >= 0 ? '+' : ''}${t.amount?.toFixed(2)}
+                  </p>
+                </div>
+              ))}
+            </div>
           </TabsContent>
 
-          {/* ==================== PREMIUM (actualizado con Cloudinary) ==================== */}
+          {/* ==================== PREMIUM ==================== */}
           <TabsContent value="premium">
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-xl font-semibold" style={{fontFamily:'Space Grotesk'}}>Contenido Premium</h2>
+              <h2 className="text-xl font-semibold" style={{ fontFamily: 'Space Grotesk' }}>Contenido Premium</h2>
               <div className="flex gap-2">
                 <Button onClick={() => setShowPremium(true)} variant="outline">
                   <Crown className="w-4 h-4 mr-1" /> Config. Plan
@@ -378,53 +781,21 @@ export default function CreatorDashboard() {
                 </CardContent>
               </Card>
             )}
-            {/* Listado de contenido premium (se mantiene similar, pero ahora usaremos mediaItems o un fetch específico) */}
-            {/* ... (código original de listado de contenido) ... */}
-          </TabsContent>
 
-          {/* ==================== MEDIA (NUEVA PESTAÑA) ==================== */}
-          <TabsContent value="media">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-xl font-semibold" style={{fontFamily:'Space Grotesk'}}>Mis Archivos Multimedia</h2>
-              <Button onClick={() => setShowContent(true)}>
-                <Upload className="w-4 h-4 mr-1" /> Subir Nuevo
-              </Button>
-            </div>
-            {mediaItems.length === 0 ? (
-              <Card className="border-border/50">
-                <CardContent className="p-8 text-center text-muted-foreground">
-                  <File className="w-8 h-8 mx-auto mb-2" />
-                  No has subido ningún archivo multimedia aún.
-                </CardContent>
-              </Card>
-            ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                {mediaItems.map(item => (
-                  <Card key={item.id} className="border-border/50 overflow-hidden">
-                    <div className="aspect-video bg-muted relative">
-                      {item.type === 'image' ? (
-                        <img src={item.cloudinary_url} alt="" className="w-full h-full object-cover" />
-                      ) : (
-                        <video src={item.cloudinary_url} controls className="w-full h-full object-cover" />
-                      )}
-                    </div>
-                    <CardContent className="p-3">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <p className="text-sm font-medium truncate">{item.public_id?.split('/').pop()}</p>
-                          <p className="text-xs text-muted-foreground">
-                            {item.size_mb} MB · {item.type}
-                          </p>
-                        </div>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="text-destructive hover:text-destructive"
-                          onClick={() => handleDeleteMedia(item.cloudinary_public_id, item.type)}
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </Button>
+            {/* Lista de contenido premium propio */}
+            {myPremiumContent.length > 0 && (
+              <div className="space-y-2">
+                <p className="text-sm font-medium">Mi Contenido Premium</p>
+                {myPremiumContent.map(item => (
+                  <Card key={item.id} className="border-border/50">
+                    <CardContent className="p-3 flex items-center justify-between">
+                      <div>
+                        <p className="text-sm font-medium">{item.title || 'Sin título'}</p>
+                        <p className="text-xs text-muted-foreground">{item.content_type} · {new Date(item.created_at).toLocaleDateString()}</p>
                       </div>
+                      {item.media_url && (
+                        <a href={item.media_url} target="_blank" rel="noopener noreferrer" className="text-primary text-xs hover:underline">Ver</a>
+                      )}
                     </CardContent>
                   </Card>
                 ))}
@@ -432,77 +803,364 @@ export default function CreatorDashboard() {
             )}
           </TabsContent>
 
-          {/* ==================== CURATOR (sin cambios) ==================== */}
+          {/* ==================== CURATOR ==================== */}
           <TabsContent value="curator">
-            {/* ... (código original) ... */}
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-xl font-semibold" style={{ fontFamily: 'Space Grotesk' }}>Curador de Spotify</h2>
+              <div className="flex gap-2">
+                <Button onClick={() => setShowPlaylist(true)} variant="outline">
+                  <Plus className="w-4 h-4 mr-1" /> Registrar Playlist
+                </Button>
+                {playlists.length > 0 && (
+                  <Button onClick={() => setShowCuratorPay(true)}>
+                    <DollarSign className="w-4 h-4 mr-1" /> Solicitar Pago
+                  </Button>
+                )}
+              </div>
+            </div>
+            <div className="p-3 rounded-lg bg-[hsl(var(--surface-2))] text-xs text-muted-foreground mb-4 space-y-1">
+              <p className="font-medium text-foreground text-sm">Tarifas de Pago:</p>
+              <p>10 canciones, 1000 escuchas: <b>$9.00</b></p>
+              <p>25 canciones, 1000 escuchas: <b>$22.00</b></p>
+              <p>10 canciones, 500 escuchas: <b>$4.00</b></p>
+              <p>5 canciones, 500 escuchas: <b>$2.00</b></p>
+              <p>10 canciones, 100 escuchas: <b>$0.30</b></p>
+            </div>
+            {playlists.length > 0 && (
+              <div className="space-y-2 mb-4">
+                <p className="text-sm font-medium">Mis Playlists</p>
+                {playlists.map(p => (
+                  <Card key={p.id} className="border-border/50">
+                    <CardContent className="p-3 flex items-center justify-between">
+                      <div>
+                        <p className="text-sm font-medium">{p.playlist_name || 'Playlist'}</p>
+                        <p className="text-xs text-muted-foreground">{p.song_count} canciones · {p.followers} seguidores</p>
+                        <a href={p.playlist_url} target="_blank" rel="noopener noreferrer" className="text-xs text-primary hover:underline">Ver en Spotify</a>
+                      </div>
+                      <StatusBadge status={p.status} />
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            )}
+            {curatorRequests.length > 0 && (
+              <div className="space-y-2">
+                <p className="text-sm font-medium">Solicitudes de Pago</p>
+                {curatorRequests.map(r => (
+                  <Card key={r.id} className="border-border/50">
+                    <CardContent className="p-3 flex items-center justify-between">
+                      <div>
+                        <p className="text-sm">{r.playlist_name} · {r.listens_count} escuchas</p>
+                        <p className="text-xs text-muted-foreground">
+                          {new Date(r.created_at).toLocaleDateString('es-ES')} · Pago: ${r.calculated_payout}
+                        </p>
+                      </div>
+                      <StatusBadge status={r.status} />
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            )}
           </TabsContent>
 
-          {/* ==================== PROFILE (sin cambios) ==================== */}
+          {/* ==================== PROFILE ==================== */}
           <TabsContent value="profile">
-            {/* ... (código original) ... */}
+            <h2 className="text-xl font-semibold mb-4" style={{ fontFamily: 'Space Grotesk' }}>Mi Perfil de Creador</h2>
+            {user?.creator_profile ? (
+              <Card className="border-border/50">
+                <CardContent className="p-5">
+                  <div className="grid grid-cols-2 gap-4 text-sm">
+                    <div><span className="text-muted-foreground">Nicho:</span> {user.creator_profile.niche}</div>
+                    <div><span className="text-muted-foreground">Nivel:</span> {user.creator_profile.creator_level}</div>
+                    <div><span className="text-muted-foreground">Región:</span> {user.creator_profile.region}</div>
+                    <div><span className="text-muted-foreground">Seguidores:</span> {user.creator_profile.followers}</div>
+                    <div><span className="text-muted-foreground">Vistas Prom:</span> {user.creator_profile.avg_views}</div>
+                    <div><span className="text-muted-foreground">Contenido:</span> {user.creator_profile.content_type}</div>
+                  </div>
+                  <Button className="mt-4" variant="outline" onClick={() => setShowProfile(true)}>Editar Perfil</Button>
+                </CardContent>
+              </Card>
+            ) : (
+              <Card className="border-[hsl(var(--status-pending))]/30">
+                <CardContent className="p-8 text-center">
+                  <p className="text-muted-foreground mb-3">No has completado tu perfil de creador</p>
+                  <Button onClick={() => setShowProfile(true)}>Completar Ahora</Button>
+                </CardContent>
+              </Card>
+            )}
           </TabsContent>
         </Tabs>
       </div>
 
-      {/* ==================== DIALOGOS (algunos actualizados) ==================== */}
-      
-      {/* Profile Dialog (sin cambios) */}
-      {/* Deliverable Dialog (sin cambios) */}
-      {/* KYC Dialog (sin cambios) */}
-      {/* Withdrawal Dialog (sin cambios) */}
-      {/* Premium Config Dialog (sin cambios) */}
+      {/* ==================== DIALOGS ==================== */}
 
-      {/* Add Premium Content Dialog (ACTUALIZADO CON MEDIAUPLOADER) */}
+      {/* Profile Dialog */}
+      <Dialog open={showProfile} onOpenChange={setShowProfile}>
+        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader><DialogTitle style={{ fontFamily: 'Space Grotesk' }}>Perfil de Creador</DialogTitle></DialogHeader>
+          <form onSubmit={handleSaveProfile} className="space-y-4">
+            {/* (mismo contenido del formulario de perfil que antes) */}
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label>Nicho</Label>
+                <Input value={profileForm.niche} onChange={e => setProfileForm({ ...profileForm, niche: e.target.value })} placeholder="humor, baile, musica..." />
+              </div>
+              <div>
+                <Label>Tipo de Contenido</Label>
+                <Input value={profileForm.content_type} onChange={e => setProfileForm({ ...profileForm, content_type: e.target.value })} placeholder="Videos, fotos, musica..." />
+              </div>
+            </div>
+            <div className="grid grid-cols-3 gap-4">
+              <div>
+                <Label>Región</Label>
+                <Input value={profileForm.region} onChange={e => setProfileForm({ ...profileForm, region: e.target.value })} placeholder="LATAM" />
+              </div>
+              <div>
+                <Label>País</Label>
+                <Input value={profileForm.country} onChange={e => setProfileForm({ ...profileForm, country: e.target.value })} />
+              </div>
+              <div>
+                <Label>Género</Label>
+                <Select value={profileForm.gender} onValueChange={v => setProfileForm({ ...profileForm, gender: v })}>
+                  <SelectTrigger><SelectValue placeholder="Seleccionar" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="male">Masculino</SelectItem>
+                    <SelectItem value="female">Femenino</SelectItem>
+                    <SelectItem value="other">Otro</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label>Teléfono</Label>
+                <Input value={profileForm.phone} onChange={e => setProfileForm({ ...profileForm, phone: e.target.value })} placeholder="+57..." />
+              </div>
+              <div>
+                <Label>Nivel</Label>
+                <Select value={profileForm.creator_level} onValueChange={v => setProfileForm({ ...profileForm, creator_level: v })}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="standard">Estándar</SelectItem>
+                    <SelectItem value="micro">Micro-Influencer</SelectItem>
+                    <SelectItem value="small">Influencer Pequeño</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label>Seguidores Totales</Label>
+                <Input type="number" value={profileForm.followers} onChange={e => setProfileForm({ ...profileForm, followers: parseInt(e.target.value) || 0 })} />
+              </div>
+              <div>
+                <Label>Vistas Promedio</Label>
+                <Input type="number" value={profileForm.avg_views} onChange={e => setProfileForm({ ...profileForm, avg_views: parseInt(e.target.value) || 0 })} />
+              </div>
+            </div>
+            <div>
+              <Label>Bio</Label>
+              <Textarea value={profileForm.bio} onChange={e => setProfileForm({ ...profileForm, bio: e.target.value })} />
+            </div>
+            <p className="text-sm font-medium">Redes Sociales</p>
+            <div className="grid grid-cols-2 gap-3">
+              <div><Label className="text-xs">YouTube</Label><Input value={profileForm.youtube_url} onChange={e => setProfileForm({ ...profileForm, youtube_url: e.target.value })} placeholder="https://youtube.com/..." /></div>
+              <div><Label className="text-xs">TikTok</Label><Input value={profileForm.tiktok_url} onChange={e => setProfileForm({ ...profileForm, tiktok_url: e.target.value })} placeholder="https://tiktok.com/..." /></div>
+              <div><Label className="text-xs">Instagram</Label><Input value={profileForm.instagram_url} onChange={e => setProfileForm({ ...profileForm, instagram_url: e.target.value })} /></div>
+              <div><Label className="text-xs">Facebook</Label><Input value={profileForm.facebook_url} onChange={e => setProfileForm({ ...profileForm, facebook_url: e.target.value })} /></div>
+              <div><Label className="text-xs">Spotify</Label><Input value={profileForm.spotify_url} onChange={e => setProfileForm({ ...profileForm, spotify_url: e.target.value })} /></div>
+              <div><Label className="text-xs">Apple Music</Label><Input value={profileForm.apple_music_url} onChange={e => setProfileForm({ ...profileForm, apple_music_url: e.target.value })} /></div>
+            </div>
+            <div>
+              <Label>Captura de Métricas</Label>
+              <Input type="file" accept="image/*" onChange={e => setProfileScreenshot(e.target.files[0])} />
+              <p className="text-xs text-muted-foreground mt-1">Captura de pantalla de tus estadísticas</p>
+            </div>
+            <Button type="submit" className="w-full">Guardar Perfil</Button>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Deliverable Dialog */}
+      <Dialog open={showDeliverable} onOpenChange={setShowDeliverable}>
+        <DialogContent>
+          <DialogHeader><DialogTitle style={{ fontFamily: 'Space Grotesk' }}>Subir Entregable</DialogTitle></DialogHeader>
+          <form onSubmit={handleDeliverable} className="space-y-4">
+            <div>
+              <Label>URL del Video</Label>
+              <Input value={delForm.video_url} onChange={e => setDelForm({ ...delForm, video_url: e.target.value })} placeholder="https://tiktok.com/..." />
+            </div>
+            <div>
+              <Label>Captura de Pantalla</Label>
+              <Input type="file" accept="image/*" onChange={e => setDelScreenshot(e.target.files[0])} />
+            </div>
+            <div>
+              <Label>Notas</Label>
+              <Textarea value={delForm.notes} onChange={e => setDelForm({ ...delForm, notes: e.target.value })} />
+            </div>
+            <Button type="submit" className="w-full">Enviar Entregable</Button>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* KYC Dialog */}
+      <Dialog open={showKYC} onOpenChange={setShowKYC}>
+        <DialogContent>
+          <DialogHeader><DialogTitle style={{ fontFamily: 'Space Grotesk' }}>Verificación KYC</DialogTitle></DialogHeader>
+          <form onSubmit={handleKYC} className="space-y-4">
+            <div>
+              <Label>Documento de Identidad *</Label>
+              <Input type="file" accept="image/*,.pdf" onChange={e => setKycDoc(e.target.files[0])} required data-testid="kyc-upload-document-input" />
+            </div>
+            <div>
+              <Label>Selfie (opcional)</Label>
+              <Input type="file" accept="image/*" onChange={e => setKycSelfie(e.target.files[0])} />
+            </div>
+            <Button type="submit" className="w-full">Enviar KYC</Button>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Withdrawal Dialog */}
+      <Dialog open={showWithdrawal} onOpenChange={setShowWithdrawal}>
+        <DialogContent>
+          <DialogHeader><DialogTitle style={{ fontFamily: 'Space Grotesk' }}>Solicitar Retiro</DialogTitle></DialogHeader>
+          <div className="p-3 rounded-lg bg-[hsl(var(--surface-2))] text-xs text-muted-foreground mb-2">
+            <p>Saldo disponible: <b className="text-foreground">${(user?.balance || 0).toFixed(2)}</b></p>
+            <p>Mínimo: $10 · Comisión: {user?.is_top10 ? '35%' : '25%'} · Máx: {user?.is_top10 ? '3' : '1'} retiros/mes</p>
+            {user?.kyc_status !== 'verified' && (
+              <p className="text-[hsl(var(--status-rejected))] mt-1">Debes completar KYC para retirar</p>
+            )}
+          </div>
+          <form onSubmit={handleWithdrawal} className="space-y-4">
+            <div><Label>Monto (USD)</Label><Input type="number" step="0.01" min="10" value={wdForm.amount} onChange={e => setWdForm({ ...wdForm, amount: e.target.value })} required /></div>
+            <div><Label>Método</Label><Select value={wdForm.method} onValueChange={v => setWdForm({ ...wdForm, method: v })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="crypto">Cripto</SelectItem><SelectItem value="bank">Banco</SelectItem></SelectContent></Select></div>
+            {wdForm.method === 'crypto' && <div><Label>Wallet Address</Label><Input value={wdForm.wallet_address} onChange={e => setWdForm({ ...wdForm, wallet_address: e.target.value })} placeholder="0x..." /></div>}
+            {wdForm.method === 'bank' && <div><Label>Datos Bancarios</Label><Textarea value={wdForm.bank_details} onChange={e => setWdForm({ ...wdForm, bank_details: e.target.value })} placeholder="Banco, titular, cuenta..." /></div>}
+            <Button type="submit" className="w-full">Solicitar Retiro</Button>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Premium Config Dialog */}
+      <Dialog open={showPremium} onOpenChange={setShowPremium}>
+        <DialogContent>
+          <DialogHeader><DialogTitle style={{ fontFamily: 'Space Grotesk' }}>Configurar Suscripción Premium</DialogTitle></DialogHeader>
+          <form onSubmit={handleSetPremium} className="space-y-4">
+            <div><Label>Precio Mensual (USD)</Label><Input type="number" step="0.01" min="0.50" value={premiumPrice} onChange={e => setPremiumPrice(e.target.value)} required /></div>
+            <div><Label>Descripción</Label><Textarea value={premiumDesc} onChange={e => setPremiumDesc(e.target.value)} placeholder="Qué incluye tu suscripción..." /></div>
+            <Button type="submit" className="w-full">Guardar Plan</Button>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Add Premium Content Dialog (con MediaUploader) */}
       <Dialog open={showContent} onOpenChange={setShowContent}>
-        <DialogContent className="max-w-lg">
-          <DialogHeader>
-            <DialogTitle style={{fontFamily:'Space Grotesk'}}>Nuevo Contenido Premium</DialogTitle>
-          </DialogHeader>
+        <DialogContent className="max-w-xl">
+          <DialogHeader><DialogTitle style={{ fontFamily: 'Space Grotesk' }}>Nuevo Contenido Premium</DialogTitle></DialogHeader>
           <form onSubmit={handleAddContent} className="space-y-4">
             <div>
               <Label>Tipo</Label>
-              <Select value={contentForm.content_type} onValueChange={v => setContentForm({...contentForm, content_type: v})}>
+              <Select value={contentForm.content_type} onValueChange={v => setContentForm({ ...contentForm, content_type: v })}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="post">Post (texto)</SelectItem>
-                  <SelectItem value="image">Imagen</SelectItem>
+                  <SelectItem value="post">Post</SelectItem>
+                  <SelectItem value="photo">Foto</SelectItem>
                   <SelectItem value="video">Video</SelectItem>
                 </SelectContent>
               </Select>
             </div>
             <div>
               <Label>Título</Label>
-              <Input value={contentForm.title} onChange={e => setContentForm({...contentForm, title: e.target.value})} />
+              <Input value={contentForm.title} onChange={e => setContentForm({ ...contentForm, title: e.target.value })} />
             </div>
             <div>
               <Label>Descripción</Label>
-              <Textarea value={contentForm.description} onChange={e => setContentForm({...contentForm, description: e.target.value})} />
+              <Textarea value={contentForm.description} onChange={e => setContentForm({ ...contentForm, description: e.target.value })} />
             </div>
             <div>
-              <Label>Archivo Multimedia</Label>
+              <Label>Subir archivo multimedia</Label>
               <MediaUploader
-                onUploadSuccess={(result) => setContentMediaResult(result)}
+                onUploadSuccess={(result) => {
+                  setUploadedMedia(result);
+                  setContentForm({ ...contentForm, media_url: result.url });
+                }}
                 accept={contentForm.content_type === 'video' ? 'video/*' : 'image/*'}
                 maxSizeMB={contentForm.content_type === 'video' ? 500 : 10}
                 maxDuration={420}
-                folder={`creators/${user?.id}/premium`}
+                folder={`creators/${user?.sub}/premium`}
                 resourceType={contentForm.content_type === 'video' ? 'video' : 'image'}
               />
-              {contentMediaResult && (
-                <p className="text-xs text-green-600 mt-1">
-                  Archivo subido: {contentMediaResult.public_id}
-                </p>
-              )}
             </div>
-            <Button type="submit" className="w-full">Publicar Contenido</Button>
+            <div>
+              <Label>O pegar URL externa (opcional)</Label>
+              <Input value={contentForm.media_url} onChange={e => setContentForm({ ...contentForm, media_url: e.target.value })} placeholder="https://..." disabled={!!uploadedMedia} />
+            </div>
+            <Button type="submit" className="w-full">Publicar</Button>
           </form>
         </DialogContent>
       </Dialog>
 
-      {/* Financing Dialog (sin cambios) */}
-      {/* Register Playlist Dialog (sin cambios) */}
-      {/* Curator Payment Dialog (sin cambios) */}
-      {/* Level Up Request Dialog (sin cambios) */}
+      {/* Music Financing Dialog */}
+      <Dialog open={showFinancing} onOpenChange={setShowFinancing}>
+        <DialogContent>
+          <DialogHeader><DialogTitle style={{ fontFamily: 'Space Grotesk' }}>Solicitar Financiamiento Musical</DialogTitle></DialogHeader>
+          <form onSubmit={handleFinancing} className="space-y-4">
+            <div><Label>Título del Proyecto *</Label><Input value={finForm.title} onChange={e => setFinForm({ ...finForm, title: e.target.value })} required /></div>
+            <div><Label>Descripción</Label><Textarea value={finForm.description} onChange={e => setFinForm({ ...finForm, description: e.target.value })} /></div>
+            <div className="grid grid-cols-2 gap-4">
+              <div><Label>Monto Solicitado ($)</Label><Input type="number" step="0.01" value={finForm.amount_requested} onChange={e => setFinForm({ ...finForm, amount_requested: e.target.value })} /></div>
+              <div><Label>Género Musical</Label><Input value={finForm.genre} onChange={e => setFinForm({ ...finForm, genre: e.target.value })} /></div>
+            </div>
+            <div><Label>Estadísticas de Streaming</Label><Textarea value={finForm.streaming_stats} onChange={e => setFinForm({ ...finForm, streaming_stats: e.target.value })} placeholder="Oyentes mensuales, seguidores..." /></div>
+            <div><Label>Audio/Demo (opcional)</Label><Input type="file" accept="audio/*" onChange={e => setFinAudio(e.target.files[0])} /></div>
+            <Button type="submit" className="w-full">Enviar Solicitud</Button>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Register Playlist Dialog */}
+      <Dialog open={showPlaylist} onOpenChange={setShowPlaylist}>
+        <DialogContent>
+          <DialogHeader><DialogTitle style={{ fontFamily: 'Space Grotesk' }}>Registrar Playlist de Spotify</DialogTitle></DialogHeader>
+          <form onSubmit={handleRegisterPlaylist} className="space-y-4">
+            <div><Label>URL de la Playlist *</Label><Input value={playlistForm.playlist_url} onChange={e => setPlaylistForm({ ...playlistForm, playlist_url: e.target.value })} placeholder="https://open.spotify.com/playlist/..." required /></div>
+            <div><Label>Nombre de la Playlist</Label><Input value={playlistForm.playlist_name} onChange={e => setPlaylistForm({ ...playlistForm, playlist_name: e.target.value })} /></div>
+            <div className="grid grid-cols-2 gap-4">
+              <div><Label>Número de Canciones (5-25)</Label><Input type="number" min="5" max="25" value={playlistForm.song_count} onChange={e => setPlaylistForm({ ...playlistForm, song_count: parseInt(e.target.value) || 5 })} /></div>
+              <div><Label>Seguidores/Me gusta (min 10)</Label><Input type="number" min="10" value={playlistForm.followers} onChange={e => setPlaylistForm({ ...playlistForm, followers: parseInt(e.target.value) || 0 })} /></div>
+            </div>
+            <Button type="submit" className="w-full">Registrar Playlist</Button>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Curator Payment Request Dialog */}
+      <Dialog open={showCuratorPay} onOpenChange={setShowCuratorPay}>
+        <DialogContent>
+          <DialogHeader><DialogTitle style={{ fontFamily: 'Space Grotesk' }}>Solicitar Pago de Curador</DialogTitle></DialogHeader>
+          <form onSubmit={handleCuratorPayment} className="space-y-4">
+            <div><Label>Playlist</Label><Select value={curatorPayForm.playlist_id} onValueChange={v => setCuratorPayForm({ ...curatorPayForm, playlist_id: v })}><SelectTrigger><SelectValue placeholder="Selecciona una playlist" /></SelectTrigger><SelectContent>{playlists.map(p => (<SelectItem key={p.id} value={p.id}>{p.playlist_name || 'Playlist'} ({p.song_count} canciones)</SelectItem>))}</SelectContent></Select></div>
+            <div><Label>Número de Escuchas Completas</Label><Input type="number" min="100" value={curatorPayForm.listens_count} onChange={e => setCuratorPayForm({ ...curatorPayForm, listens_count: parseInt(e.target.value) || 0 })} /></div>
+            <div><Label>Descripción de Evidencia</Label><Textarea value={curatorPayForm.evidence_description} onChange={e => setCuratorPayForm({ ...curatorPayForm, evidence_description: e.target.value })} placeholder="Describe las pruebas de escucha..." /></div>
+            <div><Label>Captura de Evidencia</Label><Input type="file" accept="image/*" onChange={e => setCuratorEvidence(e.target.files[0])} /></div>
+            <Button type="submit" className="w-full">Solicitar Pago</Button>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Level Up Request Dialog */}
+      <Dialog open={showLevelReq} onOpenChange={setShowLevelReq}>
+        <DialogContent>
+          <DialogHeader><DialogTitle style={{ fontFamily: 'Space Grotesk' }}>Solicitar Subir de Nivel</DialogTitle></DialogHeader>
+          <form onSubmit={handleLevelRequest} className="space-y-4">
+            <div><Label>Nivel Solicitado</Label><Select value={levelReqForm.requested_level} onValueChange={v => setLevelReqForm({ ...levelReqForm, requested_level: v })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="micro">Micro-Influencer</SelectItem><SelectItem value="small">Influencer Pequeño</SelectItem><SelectItem value="top10_level">Top 10</SelectItem></SelectContent></Select></div>
+            <div><Label>Justificación</Label><Textarea value={levelReqForm.justification} onChange={e => setLevelReqForm({ ...levelReqForm, justification: e.target.value })} placeholder="Explica por qué mereces subir de nivel..." /></div>
+            <div><Label>Enlaces de Portafolio</Label><Textarea value={levelReqForm.portfolio_links} onChange={e => setLevelReqForm({ ...levelReqForm, portfolio_links: e.target.value })} placeholder="Enlace 1, Enlace 2..." /></div>
+            <Button type="submit" className="w-full">Enviar Solicitud</Button>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
