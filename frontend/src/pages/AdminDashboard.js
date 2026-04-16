@@ -5,8 +5,7 @@ import { Routes, Route, Link, useLocation, useNavigate } from 'react-router-dom'
 import {
   adminAPI, depositsAPI, kycAPI, deliverablesAPI, withdrawalsAPI, transactionsAPI,
   musicFinancingAPI, campaignsAPI, curatorAPI, microTasksAPI, levelRequestsAPI,
-  adminWalletAPI, rankingBoardsAPI, deliverableActionsAPI, adminLevelAPI,
-  mediaAPI, storageAPI, chatAPI, premiumContentAPI
+  adminWalletAPI, rankingBoardsAPI, deliverableActionsAPI, adminLevelAPI
 } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -244,7 +243,6 @@ function AdminList({ title, fetchFn, approveFn, rejectFn, columns, type }) {
                     )}
                     {item.user_email && <p className="text-xs text-muted-foreground mt-1">{item.user_email}</p>}
 
-                    {/* Mostrar enlaces de Vocaroo y Referencia si existen */}
                     {item.vocaroo_link && (
                       <a href={item.vocaroo_link} target="_blank" rel="noopener noreferrer"
                         className="text-xs text-primary hover:underline flex items-center gap-1 mt-1">
@@ -568,410 +566,54 @@ function DeliverablesList() {
   );
 }
 
-// ==================== NUEVOS COMPONENTES ====================
+// ==================== NUEVOS COMPONENTES (Placeholders seguros) ====================
 
-// Gestión de Medios (Cloudinary)
 function AdminMedia() {
-  const [media, setMedia] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [filterCreator, setFilterCreator] = useState('');
-  const [selectedMedia, setSelectedMedia] = useState(null);
-  const [showPreview, setShowPreview] = useState(false);
-
-  const loadMedia = useCallback(async () => {
-    setLoading(true);
-    try {
-      // Asumimos un endpoint admin para listar todos los medios (a implementar en backend si no existe)
-      const res = await mediaAPI.listAll({ creator_id: filterCreator || undefined });
-      setMedia(res.data);
-    } catch (error) {
-      // Fallback: podríamos no tener endpoint, mostrar mensaje
-      console.warn('Endpoint de listado de medios no implementado');
-      setMedia([]);
-    } finally {
-      setLoading(false);
-    }
-  }, [filterCreator]);
-
-  useEffect(() => {
-    loadMedia();
-  }, [loadMedia]);
-
-  const handleDelete = async (publicId, resourceType) => {
-    if (!window.confirm('¿Eliminar este archivo permanentemente? Esta acción no se puede deshacer.')) return;
-    try {
-      await mediaAPI.deleteMedia(publicId, resourceType);
-      toast.success('Archivo eliminado');
-      loadMedia();
-    } catch (error) {
-      toast.error('Error al eliminar');
-    }
-  };
-
-  const handlePreview = async (item) => {
-    try {
-      const signedRes = await mediaAPI.getSignedUrl(item.cloudinary_public_id, item.type === 'video' ? 'video' : 'image');
-      setSelectedMedia({ ...item, signedUrl: signedRes.data.url });
-      setShowPreview(true);
-    } catch (error) {
-      toast.error('Error al obtener vista previa');
-    }
-  };
-
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <h2 className="text-xl font-semibold" style={{ fontFamily: 'Space Grotesk' }}>Gestión de Medios (Cloudinary)</h2>
-        <div className="flex gap-2">
-          <Input
-            placeholder="Filtrar por ID de creador..."
-            value={filterCreator}
-            onChange={e => setFilterCreator(e.target.value)}
-            className="w-64"
-          />
-          <Button variant="outline" onClick={loadMedia}>
-            <RefreshCw className="w-4 h-4 mr-1" /> Actualizar
-          </Button>
-        </div>
-      </div>
-
-      {loading ? (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {[1, 2, 3, 4, 5, 6].map(i => (
-            <div key={i} className="h-40 rounded-lg bg-[hsl(var(--surface-2))] animate-pulse" />
-          ))}
-        </div>
-      ) : media.length === 0 ? (
-        <Card className="border-border/50">
-          <CardContent className="p-8 text-center text-muted-foreground">
-            No hay archivos multimedia registrados.
-          </CardContent>
-        </Card>
-      ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {media.map(item => (
-            <Card key={item.id} className="border-border/50 overflow-hidden">
-              <div className="relative h-40 bg-[hsl(var(--surface-2))] flex items-center justify-center">
-                {item.type === 'image' ? (
-                  <img
-                    src={item.cloudinary_url}
-                    alt={item.description || 'Media'}
-                    className="w-full h-full object-cover"
-                    onError={(e) => { e.target.src = 'https://via.placeholder.com/300?text=Error'; }}
-                  />
-                ) : item.type === 'video' ? (
-                  <div className="relative w-full h-full bg-black flex items-center justify-center">
-                    <Video className="w-12 h-12 text-white opacity-70" />
-                    <span className="absolute bottom-2 right-2 text-xs text-white bg-black/50 px-2 py-0.5 rounded">
-                      {item.duration_seconds ? `${item.duration_seconds}s` : 'Video'}
-                    </span>
-                  </div>
-                ) : (
-                  <Cloud className="w-12 h-12 text-muted-foreground" />
-                )}
-              </div>
-              <CardContent className="p-3">
-                <div className="flex items-center justify-between mb-1">
-                  <p className="text-sm font-medium truncate">{item.creator_name || item.creator_id}</p>
-                  <StatusBadge status={item.is_deleted ? 'deleted' : 'active'} />
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  {item.type} · {item.size_mb} MB · {new Date(item.created_at).toLocaleDateString()}
-                </p>
-                <p className="text-xs text-muted-foreground truncate">
-                  ID: {item.cloudinary_public_id}
-                </p>
-                <div className="flex gap-2 mt-3">
-                  <Button size="sm" variant="outline" onClick={() => handlePreview(item)}>
-                    <Eye className="w-3 h-3 mr-1" /> Vista previa
-                  </Button>
-                  <Button size="sm" variant="destructive" onClick={() => handleDelete(item.cloudinary_public_id, item.type)}>
-                    <Trash2 className="w-3 h-3 mr-1" /> Eliminar
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      )}
-
-      {/* Modal de vista previa */}
-      <Dialog open={showPreview} onOpenChange={setShowPreview}>
-        <DialogContent className="max-w-4xl">
-          <DialogHeader>
-            <DialogTitle>Vista previa de {selectedMedia?.type}</DialogTitle>
-          </DialogHeader>
-          <div className="flex items-center justify-center">
-            {selectedMedia?.type === 'image' ? (
-              <img src={selectedMedia.signedUrl} alt="Preview" className="max-w-full max-h-[70vh] object-contain" />
-            ) : selectedMedia?.type === 'video' ? (
-              <video src={selectedMedia.signedUrl} controls className="max-w-full max-h-[70vh]" autoPlay />
-            ) : (
-              <p className="text-muted-foreground">No se puede previsualizar este tipo de archivo.</p>
-            )}
-          </div>
-          <div className="text-xs text-muted-foreground mt-2">
-            URL firmada expira en 1 hora.
-          </div>
-        </DialogContent>
-      </Dialog>
-    </div>
-  );
-}
-
-// Gestión de Almacenamiento de Creadores
-function AdminStorage() {
-  const [creators, setCreators] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [selectedCreator, setSelectedCreator] = useState(null);
-  const [newLimit, setNewLimit] = useState('');
-  const [showAdjustModal, setShowAdjustModal] = useState(false);
-
-  const loadStorage = useCallback(async () => {
-    setLoading(true);
-    try {
-      // Obtener todos los creadores con su uso de almacenamiento
-      const usersRes = await adminAPI.users('creator');
-      const creatorsData = usersRes.data;
-
-      const storagePromises = creatorsData.map(async (c) => {
-        try {
-          const usageRes = await storageAPI.getUsage(c.id);
-          return { ...c, storage: usageRes.data };
-        } catch {
-          return { ...c, storage: { used_mb: 0, limit_mb: 600, available_mb: 600, usage_percent: 0 } };
-        }
-      });
-
-      const enriched = await Promise.all(storagePromises);
-      setCreators(enriched);
-    } catch (error) {
-      console.error('Error loading storage:', error);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    loadStorage();
-  }, [loadStorage]);
-
-  const handleAdjustLimit = (creator) => {
-    setSelectedCreator(creator);
-    setNewLimit(creator.storage?.limit_mb?.toString() || '600');
-    setShowAdjustModal(true);
-  };
-
-  const saveNewLimit = async () => {
-    if (!selectedCreator || !newLimit) return;
-    try {
-      // Asumimos endpoint para ajustar límite (a implementar)
-      await storageAPI.setLimit(selectedCreator.id, { limit_mb: parseInt(newLimit) });
-      toast.success('Límite actualizado');
-      setShowAdjustModal(false);
-      loadStorage();
-    } catch (error) {
-      toast.error('Error al actualizar límite');
-    }
-  };
-
-  return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <h2 className="text-xl font-semibold" style={{ fontFamily: 'Space Grotesk' }}>Almacenamiento de Creadores</h2>
-        <Button variant="outline" onClick={loadStorage}>
-          <RefreshCw className="w-4 h-4 mr-1" /> Actualizar
-        </Button>
-      </div>
-
+      <h2 className="text-xl font-semibold" style={{ fontFamily: 'Space Grotesk' }}>Gestión de Medios (Cloudinary)</h2>
       <Card className="border-border/50">
-        <CardContent className="p-4">
-          <p className="text-sm text-muted-foreground mb-4">
-            Límite base: 600 MB. Por cada 10 suscriptores, el creador recibe 600 MB adicionales automáticamente.
-            Puedes ajustar manualmente el límite para cada creador.
-          </p>
+        <CardContent className="p-8 text-center text-muted-foreground">
+          <Cloud className="w-12 h-12 mx-auto mb-4 opacity-50" />
+          <p>Funcionalidad en desarrollo.</p>
+          <p className="text-sm mt-2">Próximamente podrás gestionar todos los archivos multimedia desde aquí.</p>
         </CardContent>
       </Card>
-
-      {loading ? (
-        <div className="space-y-2">
-          {[1, 2, 3].map(i => <div key={i} className="h-16 rounded-lg bg-[hsl(var(--surface-2))] animate-pulse" />)}
-        </div>
-      ) : (
-        <div className="space-y-2">
-          {creators.map(creator => {
-            const storage = creator.storage || { used_mb: 0, limit_mb: 600, usage_percent: 0 };
-            return (
-              <Card key={creator.id} className="border-border/50">
-                <CardContent className="p-4">
-                  <div className="flex items-start justify-between">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2 mb-1">
-                        <p className="font-medium">{creator.name}</p>
-                        <span className="text-xs text-muted-foreground">{creator.email}</span>
-                      </div>
-                      <div className="space-y-1">
-                        <div className="flex justify-between text-xs">
-                          <span>Usado: {storage.used_mb} MB</span>
-                          <span>Límite: {storage.limit_mb} MB</span>
-                        </div>
-                        <Progress value={storage.usage_percent} className="h-2" />
-                        <p className="text-xs text-muted-foreground">
-                          Suscriptores: {creator.subscriber_count || 0} · Disponible: {storage.available_mb} MB
-                        </p>
-                      </div>
-                    </div>
-                    <Button size="sm" variant="outline" onClick={() => handleAdjustLimit(creator)}>
-                      Ajustar límite
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-            );
-          })}
-        </div>
-      )}
-
-      {/* Modal ajustar límite */}
-      <Dialog open={showAdjustModal} onOpenChange={setShowAdjustModal}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Ajustar límite de almacenamiento para {selectedCreator?.name}</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div>
-              <Label>Límite actual: {selectedCreator?.storage?.limit_mb || 600} MB</Label>
-            </div>
-            <div>
-              <Label>Nuevo límite (MB)</Label>
-              <Input
-                type="number"
-                min="100"
-                step="100"
-                value={newLimit}
-                onChange={e => setNewLimit(e.target.value)}
-              />
-            </div>
-            <Button onClick={saveNewLimit}>Guardar</Button>
-          </div>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }
 
-// Monitoreo de Chat (Admin)
-function AdminChat() {
-  const [conversations, setConversations] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [selectedConv, setSelectedConv] = useState(null);
-  const [messages, setMessages] = useState([]);
-
-  const loadConversations = useCallback(async () => {
-    setLoading(true);
-    try {
-      // Endpoint para admin: listar todas las conversaciones (a implementar)
-      const res = await chatAPI.getAllConversations();
-      setConversations(res.data);
-    } catch (error) {
-      console.warn('Endpoint de admin chat no implementado');
-      setConversations([]);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    loadConversations();
-  }, [loadConversations]);
-
-  const viewConversation = async (conv) => {
-    setSelectedConv(conv);
-    try {
-      const res = await chatAPI.getMessages(conv.other_user_id, 100);
-      setMessages(res.data);
-    } catch (error) {
-      toast.error('Error al cargar mensajes');
-    }
-  };
-
+function AdminStorage() {
   return (
-    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 h-[600px]">
-      <Card className="border-border/50 md:col-span-1 flex flex-col">
-        <CardHeader className="pb-2">
-          <CardTitle className="text-base">Conversaciones Recientes</CardTitle>
-        </CardHeader>
-        <ScrollArea className="flex-1">
-          <div className="p-2 space-y-1">
-            {loading ? (
-              <p className="text-sm text-muted-foreground text-center py-4">Cargando...</p>
-            ) : conversations.length === 0 ? (
-              <p className="text-sm text-muted-foreground text-center py-4">No hay conversaciones</p>
-            ) : (
-              conversations.map(conv => (
-                <div
-                  key={conv.other_user_id}
-                  className={`p-3 rounded-lg cursor-pointer hover:bg-[hsl(var(--surface-2))] transition-colors ${selectedConv?.other_user_id === conv.other_user_id ? 'bg-[hsl(var(--surface-2))]' : ''}`}
-                  onClick={() => viewConversation(conv)}
-                >
-                  <div className="flex items-center justify-between">
-                    <p className="font-medium text-sm">{conv.other_user_name}</p>
-                    <span className="text-xs text-muted-foreground">{new Date(conv.last_message_at).toLocaleDateString()}</span>
-                  </div>
-                  <p className="text-xs text-muted-foreground truncate">{conv.last_message || 'Sin mensajes'}</p>
-                </div>
-              ))
-            )}
-          </div>
-        </ScrollArea>
-      </Card>
-
-      <Card className="border-border/50 md:col-span-2 flex flex-col">
-        <CardHeader className="pb-2 border-b">
-          <CardTitle className="text-base">
-            {selectedConv ? `Chat con ${selectedConv.other_user_name}` : 'Selecciona una conversación'}
-          </CardTitle>
-        </CardHeader>
-        <ScrollArea className="flex-1 p-4">
-          {selectedConv ? (
-            messages.length === 0 ? (
-              <p className="text-sm text-muted-foreground text-center py-8">No hay mensajes</p>
-            ) : (
-              <div className="space-y-3">
-                {messages.map(msg => {
-                  const isCreator = msg.sender_id === selectedConv.other_user_id;
-                  return (
-                    <div key={msg.id} className={`flex ${isCreator ? 'justify-start' : 'justify-end'}`}>
-                      <div className={`max-w-[70%] rounded-lg p-3 ${isCreator ? 'bg-[hsl(var(--surface-2))]' : 'bg-primary/20'}`}>
-                        <p className="text-xs font-medium mb-1">{isCreator ? selectedConv.other_user_name : 'Fan'}</p>
-                        {msg.type === 'text' && <p className="text-sm">{msg.content}</p>}
-                        {msg.type === 'image' && (
-                          <div className="text-xs text-primary">[Imagen]</div>
-                        )}
-                        {msg.type === 'video' && (
-                          <div className="text-xs text-primary">[Video]</div>
-                        )}
-                        <p className="text-xs opacity-70 mt-1">
-                          {new Date(msg.created_at).toLocaleString()}
-                        </p>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )
-          ) : (
-            <p className="text-sm text-muted-foreground text-center py-8">
-              Selecciona una conversación para ver los mensajes
-            </p>
-          )}
-        </ScrollArea>
+    <div className="space-y-4">
+      <h2 className="text-xl font-semibold" style={{ fontFamily: 'Space Grotesk' }}>Almacenamiento de Creadores</h2>
+      <Card className="border-border/50">
+        <CardContent className="p-8 text-center text-muted-foreground">
+          <HardDrive className="w-12 h-12 mx-auto mb-4 opacity-50" />
+          <p>Funcionalidad en desarrollo.</p>
+          <p className="text-sm mt-2">Próximamente podrás monitorear y ajustar el almacenamiento de los creadores.</p>
+        </CardContent>
       </Card>
     </div>
   );
 }
 
-// ==================== OTROS COMPONENTES (sin cambios mayores) ====================
+function AdminChat() {
+  return (
+    <div className="space-y-4">
+      <h2 className="text-xl font-semibold" style={{ fontFamily: 'Space Grotesk' }}>Monitoreo de Chat</h2>
+      <Card className="border-border/50">
+        <CardContent className="p-8 text-center text-muted-foreground">
+          <MessageCircle className="w-12 h-12 mx-auto mb-4 opacity-50" />
+          <p>Funcionalidad en desarrollo.</p>
+          <p className="text-sm mt-2">Próximamente podrás supervisar las conversaciones entre usuarios.</p>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+// ==================== OTROS COMPONENTES (sin cambios) ====================
 
 function AdminUsers() {
   const [users, setUsers] = useState([]);
