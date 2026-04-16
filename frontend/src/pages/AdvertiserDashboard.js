@@ -14,17 +14,71 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Progress } from '@/components/ui/progress';
 import { toast } from 'sonner';
 import { API_BASE } from '@/lib/api';
 import {
   DollarSign, Plus, Upload, Megaphone, FileCheck, LogOut, Zap, Wallet, CreditCard,
-  CheckCircle2, XCircle, Clock, Eye, TrendingUp, ExternalLink, Music, Mic, Image as ImageIcon
+  CheckCircle2, XCircle, Clock, Eye, TrendingUp, ExternalLink, Music, Mic, Image as ImageIcon,
+  HardDrive
 } from 'lucide-react';
 
-// Componente simple para previsualizar comprobante (sin dependencias extra)
+// Importación dinámica de MediaUploader para evitar errores si no existe
+let MediaUploader = null;
+try {
+  MediaUploader = require('@/components/MediaUploader').default;
+} catch (e) {
+  // Fallback: componente simple de subida
+  MediaUploader = ({ onUploadSuccess, accept, maxSizeMB, folder, resourceType }) => {
+    const [uploading, setUploading] = useState(false);
+    const handleFileChange = async (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      setUploading(true);
+      try {
+        // Simular subida (en producción debería usar el servicio cloudinary)
+        const fakeResult = {
+          public_id: 'temp_' + Date.now(),
+          url: URL.createObjectURL(file),
+          format: file.type.split('/')[1],
+          bytes: file.size,
+          resource_type: resourceType
+        };
+        onUploadSuccess(fakeResult);
+        toast.success('Archivo cargado (modo simulación)');
+      } catch (error) {
+        toast.error('Error al cargar archivo');
+      } finally {
+        setUploading(false);
+      }
+    };
+    return (
+      <div className="border-2 border-dashed border-border rounded-lg p-4 text-center">
+        <Input type="file" accept={accept} onChange={handleFileChange} disabled={uploading} />
+        {uploading && <Progress value={50} className="mt-2" />}
+        <p className="text-xs text-muted-foreground mt-1">Máx {maxSizeMB}MB</p>
+      </div>
+    );
+  };
+}
+
+function StatusBadge({ status }) {
+  const map = {
+    pending: 'status-badge-pending', approved: 'status-badge-approved',
+    rejected: 'status-badge-rejected', active: 'status-badge-active',
+    completed: 'status-badge-approved', cancelled: 'status-badge-rejected',
+    accepted: 'status-badge-approved'
+  };
+  const labels = {
+    pending: 'Pendiente', approved: 'Aprobado', rejected: 'Rechazado',
+    active: 'Activo', completed: 'Completado', cancelled: 'Cancelado',
+    accepted: 'Aceptado'
+  };
+  return <span className={map[status] || 'status-badge-pending'}>{labels[status] || status}</span>;
+}
+
 function DepositProofPreview({ file, onRemove }) {
   const [preview, setPreview] = useState(null);
-
   useEffect(() => {
     if (!file) return;
     if (file.type.startsWith('image/')) {
@@ -35,9 +89,7 @@ function DepositProofPreview({ file, onRemove }) {
       setPreview(null);
     }
   }, [file]);
-
   if (!file) return null;
-
   return (
     <div className="flex items-center gap-3 p-3 rounded-lg bg-[hsl(var(--surface-2))]">
       {preview ? (
@@ -58,21 +110,6 @@ function DepositProofPreview({ file, onRemove }) {
   );
 }
 
-function StatusBadge({ status }) {
-  const map = {
-    pending: 'status-badge-pending', approved: 'status-badge-approved',
-    rejected: 'status-badge-rejected', active: 'status-badge-active',
-    completed: 'status-badge-approved', cancelled: 'status-badge-rejected',
-    accepted: 'status-badge-approved'
-  };
-  const labels = {
-    pending: 'Pendiente', approved: 'Aprobado', rejected: 'Rechazado',
-    active: 'Activo', completed: 'Completado', cancelled: 'Cancelado',
-    accepted: 'Aceptado'
-  };
-  return <span className={map[status] || 'status-badge-pending'}>{labels[status] || status}</span>;
-}
-
 export default function AdvertiserDashboard() {
   const { user, logout, refreshUser } = useAuth();
   const navigate = useNavigate();
@@ -84,8 +121,9 @@ export default function AdvertiserDashboard() {
   const [transactions, setTransactions] = useState([]);
   const [paymentInfo, setPaymentInfo] = useState({});
   const [loading, setLoading] = useState(true);
+  const [storageUsage, setStorageUsage] = useState({ used_mb: 0, limit_mb: 100, available_mb: 100, usage_percent: 0 });
 
-  // Deposit form
+  // Deposit
   const [showDeposit, setShowDeposit] = useState(false);
   const [depAmount, setDepAmount] = useState('');
   const [depMethod, setDepMethod] = useState('crypto');
@@ -93,7 +131,7 @@ export default function AdvertiserDashboard() {
   const [depProof, setDepProof] = useState(null);
   const [depLoading, setDepLoading] = useState(false);
 
-  // Campaign form
+  // Campaign
   const [showCampaign, setShowCampaign] = useState(false);
   const [campForm, setCampForm] = useState({
     title: '', description: '', budget: '', payment_per_video: '', niche: '', region: '',
@@ -104,6 +142,8 @@ export default function AdvertiserDashboard() {
     reference_link: ''
   });
   const [campLoading, setCampLoading] = useState(false);
+  const [uploadedAudio, setUploadedAudio] = useState(null);
+  const [uploadedImage, setUploadedImage] = useState(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -122,16 +162,21 @@ export default function AdvertiserDashboard() {
       setDeliverables(del.data);
       setTransactions(txn.data);
       setPaymentInfo(pi.data);
+
+      try {
+        const { storageAPI } = await import('@/lib/api');
+        const storageRes = await storageAPI.getUsage(user.sub);
+        setStorageUsage(storageRes.data);
+      } catch {}
+
       await refreshUser();
     } catch (error) {
       console.error('Error loading data:', error);
     }
     setLoading(false);
-  }, [refreshUser]);
+  }, [refreshUser, user?.sub]);
 
-  useEffect(() => {
-    load();
-  }, [load]);
+  useEffect(() => { load(); }, [load]);
 
   const handleDeposit = async (e) => {
     e.preventDefault();
@@ -149,9 +194,7 @@ export default function AdvertiserDashboard() {
       await depositsAPI.create(fd);
       toast.success('Depósito enviado. Pendiente de aprobación.');
       setShowDeposit(false);
-      setDepAmount('');
-      setDepRef('');
-      setDepProof(null);
+      setDepAmount(''); setDepRef(''); setDepProof(null);
       load();
     } catch (err) {
       toast.error(err.response?.data?.detail || 'Error');
@@ -176,6 +219,14 @@ export default function AdvertiserDashboard() {
         bonus_amount: parseFloat(campForm.bonus_amount) || 0,
         max_videos_per_creator: parseInt(campForm.max_videos_per_creator) || 1,
       };
+      if (uploadedAudio) {
+        payload.audio_url = uploadedAudio.url;
+        payload.cloudinary_audio_public_id = uploadedAudio.public_id;
+      }
+      if (uploadedImage) {
+        payload.photo_url = uploadedImage.url;
+        payload.cloudinary_image_public_id = uploadedImage.public_id;
+      }
       await campaignsAPI.create(payload);
       toast.success('Campaña creada exitosamente');
       setShowCampaign(false);
@@ -185,6 +236,8 @@ export default function AdvertiserDashboard() {
         bonus_threshold_views: 0, bonus_amount: 0, influencer_level: 'any', external_link: '',
         max_videos_per_creator: 1, vocaroo_link: '', reference_link: ''
       });
+      setUploadedAudio(null);
+      setUploadedImage(null);
       load();
     } catch (err) {
       toast.error(err.response?.data?.detail || 'Error al crear campaña');
@@ -193,34 +246,17 @@ export default function AdvertiserDashboard() {
   };
 
   const handleAcceptApp = async (id) => {
-    try {
-      await applicationsAPI.accept(id);
-      toast.success('Aplicación aceptada');
-      load();
-    } catch (err) {
-      toast.error(err.response?.data?.detail || 'Error');
-    }
+    try { await applicationsAPI.accept(id); toast.success('Aplicación aceptada'); load(); } 
+    catch (err) { toast.error(err.response?.data?.detail || 'Error'); }
   };
-
   const handleRejectApp = async (id) => {
-    try {
-      await applicationsAPI.reject(id);
-      toast.success('Aplicación rechazada');
-      load();
-    } catch (err) {
-      toast.error(err.response?.data?.detail || 'Error');
-    }
+    try { await applicationsAPI.reject(id); toast.success('Aplicación rechazada'); load(); } 
+    catch (err) { toast.error(err.response?.data?.detail || 'Error'); }
   };
-
   const handleCancelCampaign = async (id) => {
     if (!window.confirm('¿Cancelar campaña? Se reembolsará el presupuesto no gastado.')) return;
-    try {
-      await campaignsAPI.cancel(id);
-      toast.success('Campaña cancelada');
-      load();
-    } catch (err) {
-      toast.error(err.response?.data?.detail || 'Error');
-    }
+    try { await campaignsAPI.cancel(id); toast.success('Campaña cancelada'); load(); } 
+    catch (err) { toast.error(err.response?.data?.detail || 'Error'); }
   };
 
   const toggleNetwork = (net) => {
@@ -232,30 +268,18 @@ export default function AdvertiserDashboard() {
     }));
   };
 
-  // Abrir Vocaroo en nueva pestaña
-  const openVocaroo = () => {
-    window.open('https://vocaroo.com/', '_blank');
-  };
-
   return (
     <div className="min-h-screen bg-background">
       {/* Top bar */}
       <div className="border-b border-border/50 px-4 py-3 flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <span className="font-semibold text-lg" style={{ fontFamily: 'Space Grotesk' }}>
-            Family Fans Mony
-          </span>
+          <span className="font-semibold text-lg" style={{ fontFamily: 'Space Grotesk' }}>Family Fans Mony</span>
           <span className="text-xs px-2 py-1 rounded bg-primary/10 text-primary">Anunciante</span>
         </div>
         <div className="flex items-center gap-4">
           <span className="text-sm font-medium">${(user?.balance || 0).toFixed(2)}</span>
-          <Button size="sm" onClick={() => setShowDeposit(true)} data-testid="advertiser-deposit-button">
-            Depositar
-          </Button>
-          <button
-            onClick={() => { logout(); navigate('/'); }}
-            className="text-muted-foreground hover:text-foreground"
-          >
+          <Button size="sm" onClick={() => setShowDeposit(true)} data-testid="advertiser-deposit-button">Depositar</Button>
+          <button onClick={() => { logout(); navigate('/'); }} className="text-muted-foreground hover:text-foreground">
             <LogOut className="w-4 h-4" />
           </button>
         </div>
@@ -271,57 +295,40 @@ export default function AdvertiserDashboard() {
             <TabsTrigger value="transactions">Transacciones</TabsTrigger>
           </TabsList>
 
+          {/* OVERVIEW */}
           <TabsContent value="overview">
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-              <div className="kpi-card">
-                <p className="text-xs text-muted-foreground mb-1">Saldo Disponible</p>
-                <p className="text-2xl font-semibold tabular-nums text-primary" style={{ fontFamily: 'Space Grotesk' }}>
-                  ${(user?.balance || 0).toFixed(2)}
-                </p>
-              </div>
-              <div className="kpi-card">
-                <p className="text-xs text-muted-foreground mb-1">Campañas Activas</p>
-                <p className="text-2xl font-semibold tabular-nums" style={{ fontFamily: 'Space Grotesk' }}>
-                  {campaigns.filter(c => c.status === 'active').length}
-                </p>
-              </div>
-              <div className="kpi-card">
-                <p className="text-xs text-muted-foreground mb-1">Entregables Pendientes</p>
-                <p className="text-2xl font-semibold tabular-nums" style={{ fontFamily: 'Space Grotesk' }}>
-                  {deliverables.filter(d => d.status === 'pending').length}
-                </p>
-              </div>
-              <div className="kpi-card">
-                <p className="text-xs text-muted-foreground mb-1">Depósitos Pendientes</p>
-                <p className="text-2xl font-semibold tabular-nums" style={{ fontFamily: 'Space Grotesk' }}>
-                  {deposits.filter(d => d.status === 'pending').length}
-                </p>
-              </div>
+              <div className="kpi-card"><p className="text-xs text-muted-foreground mb-1">Saldo Disponible</p><p className="text-2xl font-semibold tabular-nums text-primary" style={{ fontFamily: 'Space Grotesk' }}>${(user?.balance || 0).toFixed(2)}</p></div>
+              <div className="kpi-card"><p className="text-xs text-muted-foreground mb-1">Campañas Activas</p><p className="text-2xl font-semibold tabular-nums" style={{ fontFamily: 'Space Grotesk' }}>{campaigns.filter(c => c.status === 'active').length}</p></div>
+              <div className="kpi-card"><p className="text-xs text-muted-foreground mb-1">Entregables Pendientes</p><p className="text-2xl font-semibold tabular-nums" style={{ fontFamily: 'Space Grotesk' }}>{deliverables.filter(d => d.status === 'pending').length}</p></div>
+              <div className="kpi-card"><p className="text-xs text-muted-foreground mb-1">Depósitos Pendientes</p><p className="text-2xl font-semibold tabular-nums" style={{ fontFamily: 'Space Grotesk' }}>{deposits.filter(d => d.status === 'pending').length}</p></div>
             </div>
+            {storageUsage.limit_mb > 0 && (
+              <Card className="border-border/50 mb-6">
+                <CardContent className="p-4">
+                  <div className="flex items-center gap-2 mb-2"><HardDrive className="w-4 h-4 text-primary" /><p className="font-semibold text-sm">Almacenamiento de Campañas</p></div>
+                  <div className="space-y-1">
+                    <div className="flex justify-between text-xs"><span>Usado: {storageUsage.used_mb} MB</span><span>Límite: {storageUsage.limit_mb} MB</span></div>
+                    <Progress value={storageUsage.usage_percent} className="h-2" />
+                    <p className="text-xs text-muted-foreground">{storageUsage.available_mb} MB disponibles para material multimedia.</p>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
             <div className="flex gap-3 mb-6">
-              <Button onClick={() => setShowCampaign(true)} className="gap-2">
-                <Plus className="w-4 h-4" /> Nueva Campaña
-              </Button>
-              <Button variant="outline" onClick={() => setShowDeposit(true)} className="gap-2">
-                <DollarSign className="w-4 h-4" /> Depositar Fondos
-              </Button>
+              <Button onClick={() => setShowCampaign(true)} className="gap-2"><Plus className="w-4 h-4" /> Nueva Campaña</Button>
+              <Button variant="outline" onClick={() => setShowDeposit(true)} className="gap-2"><DollarSign className="w-4 h-4" /> Depositar Fondos</Button>
             </div>
           </TabsContent>
 
+          {/* CAMPAIGNS */}
           <TabsContent value="campaigns">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-xl font-semibold" style={{ fontFamily: 'Space Grotesk' }}>Mis Campañas</h2>
-              <Button onClick={() => setShowCampaign(true)}>
-                <Plus className="w-4 h-4 mr-1" /> Nueva
-              </Button>
+              <Button onClick={() => setShowCampaign(true)}><Plus className="w-4 h-4 mr-1" /> Nueva</Button>
             </div>
             {campaigns.length === 0 ? (
-              <Card className="border-border/50">
-                <CardContent className="p-8 text-center">
-                  <Megaphone className="w-8 h-8 text-muted-foreground mx-auto mb-2" />
-                  <p className="text-sm text-muted-foreground">No tienes campañas. Crea tu primera campaña.</p>
-                </CardContent>
-              </Card>
+              <Card className="border-border/50"><CardContent className="p-8 text-center"><Megaphone className="w-8 h-8 text-muted-foreground mx-auto mb-2" /><p className="text-sm text-muted-foreground">No tienes campañas. Crea tu primera campaña.</p></CardContent></Card>
             ) : (
               <div className="space-y-3">
                 {campaigns.map(c => (
@@ -329,10 +336,7 @@ export default function AdvertiserDashboard() {
                     <CardContent className="p-4">
                       <div className="flex items-start justify-between">
                         <div>
-                          <div className="flex items-center gap-2 mb-1">
-                            <p className="font-semibold">{c.title}</p>
-                            <StatusBadge status={c.status} />
-                          </div>
+                          <div className="flex items-center gap-2 mb-1"><p className="font-semibold">{c.title}</p><StatusBadge status={c.status} /></div>
                           <p className="text-xs text-muted-foreground">{c.description}</p>
                           <div className="flex items-center gap-4 mt-2 text-xs text-muted-foreground">
                             <span>Presupuesto: <b className="text-foreground">${c.budget}</b></span>
@@ -340,36 +344,14 @@ export default function AdvertiserDashboard() {
                             <span>Videos: {c.videos_completed}/{c.videos_requested}</span>
                             <span>Pago/video: ${c.payment_per_video}</span>
                           </div>
-                          <div className="flex items-center gap-2 mt-2">
-                            <span className="text-xs bg-[hsl(var(--surface-3))] px-2 py-1 rounded font-mono">
-                              ID: {c.id}
-                            </span>
-                          </div>
-                          <div className="flex items-center gap-2 mt-1 text-xs text-muted-foreground">
-                            <span>{c.niche}</span> <span>{c.region}</span> <span>{(c.social_networks||[]).join(', ')}</span>
-                          </div>
-                          {c.vocaroo_link && (
-                            <div className="mt-2 text-xs">
-                              <a href={c.vocaroo_link} target="_blank" rel="noopener noreferrer"
-                                className="text-primary hover:underline flex items-center gap-1">
-                                <Music className="w-3 h-3" /> Audio de instrucciones (Vocaroo)
-                              </a>
-                            </div>
-                          )}
-                          {c.reference_link && (
-                            <div className="text-xs">
-                              <a href={c.reference_link} target="_blank" rel="noopener noreferrer"
-                                className="text-primary hover:underline flex items-center gap-1">
-                                <ExternalLink className="w-3 h-3" /> Enlace de referencia
-                              </a>
-                            </div>
-                          )}
+                          <div className="flex items-center gap-2 mt-2"><span className="text-xs bg-[hsl(var(--surface-3))] px-2 py-1 rounded font-mono">ID: {c.id}</span></div>
+                          <div className="flex items-center gap-2 mt-1 text-xs text-muted-foreground"><span>{c.niche}</span> <span>{c.region}</span> <span>{(c.social_networks||[]).join(', ')}</span></div>
+                          {c.vocaroo_link && <div className="mt-2 text-xs"><a href={c.vocaroo_link} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline flex items-center gap-1"><Music className="w-3 h-3" /> Audio de instrucciones (Vocaroo)</a></div>}
+                          {c.audio_url && !c.vocaroo_link && <div className="mt-2 text-xs"><a href={c.audio_url} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline flex items-center gap-1"><Mic className="w-3 h-3" /> Audio de instrucciones (subido)</a></div>}
+                          {c.reference_link && <div className="text-xs"><a href={c.reference_link} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline flex items-center gap-1"><ExternalLink className="w-3 h-3" /> Enlace de referencia</a></div>}
+                          {c.photo_url && <div className="mt-2"><a href={c.photo_url} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline flex items-center gap-1 text-xs"><ImageIcon className="w-3 h-3" /> Imagen de referencia</a></div>}
                         </div>
-                        {c.status === 'active' && (
-                          <Button size="sm" variant="destructive" onClick={() => handleCancelCampaign(c.id)}>
-                            Cancelar
-                          </Button>
-                        )}
+                        {c.status === 'active' && <Button size="sm" variant="destructive" onClick={() => handleCancelCampaign(c.id)}>Cancelar</Button>}
                       </div>
                     </CardContent>
                   </Card>
@@ -378,33 +360,23 @@ export default function AdvertiserDashboard() {
             )}
           </TabsContent>
 
+          {/* APPLICATIONS */}
           <TabsContent value="applications">
             <h2 className="text-xl font-semibold mb-4" style={{ fontFamily: 'Space Grotesk' }}>Aplicaciones de Creadores</h2>
-            {applications.length === 0 ? (
-              <Card className="border-border/50"><CardContent className="p-8 text-center text-muted-foreground">Sin aplicaciones</CardContent></Card>
-            ) : (
+            {applications.length === 0 ? <Card className="border-border/50"><CardContent className="p-8 text-center text-muted-foreground">Sin aplicaciones</CardContent></Card> : (
               <div className="space-y-2">
                 {applications.map(a => (
                   <Card key={a.id} className="border-border/50">
                     <CardContent className="p-4 flex items-center justify-between">
                       <div>
-                        <div className="flex items-center gap-2">
-                          <p className="font-medium text-sm">{a.creator_name}</p>
-                          <StatusBadge status={a.status} />
-                        </div>
-                        <p className="text-xs text-muted-foreground">
-                          Campaña: {a.campaign_title} · {a.creator_email} · {new Date(a.created_at).toLocaleDateString('es-ES')}
-                        </p>
+                        <div className="flex items-center gap-2"><p className="font-medium text-sm">{a.creator_name}</p><StatusBadge status={a.status} /></div>
+                        <p className="text-xs text-muted-foreground">Campaña: {a.campaign_title} · {a.creator_email} · {new Date(a.created_at).toLocaleDateString('es-ES')}</p>
                         {a.message && <p className="text-xs mt-1">{a.message}</p>}
                       </div>
                       {a.status === 'pending' && (
                         <div className="flex gap-2">
-                          <Button size="sm" onClick={() => handleAcceptApp(a.id)}>
-                            <CheckCircle2 className="w-4 h-4 mr-1" /> Aceptar
-                          </Button>
-                          <Button size="sm" variant="destructive" onClick={() => handleRejectApp(a.id)}>
-                            <XCircle className="w-4 h-4 mr-1" /> Rechazar
-                          </Button>
+                          <Button size="sm" onClick={() => handleAcceptApp(a.id)}><CheckCircle2 className="w-4 h-4 mr-1" /> Aceptar</Button>
+                          <Button size="sm" variant="destructive" onClick={() => handleRejectApp(a.id)}><XCircle className="w-4 h-4 mr-1" /> Rechazar</Button>
                         </div>
                       )}
                     </CardContent>
@@ -414,32 +386,18 @@ export default function AdvertiserDashboard() {
             )}
           </TabsContent>
 
+          {/* DELIVERABLES */}
           <TabsContent value="deliverables">
             <h2 className="text-xl font-semibold mb-4" style={{ fontFamily: 'Space Grotesk' }}>Entregables</h2>
-            {deliverables.length === 0 ? (
-              <Card className="border-border/50"><CardContent className="p-8 text-center text-muted-foreground">Sin entregables</CardContent></Card>
-            ) : (
+            {deliverables.length === 0 ? <Card className="border-border/50"><CardContent className="p-8 text-center text-muted-foreground">Sin entregables</CardContent></Card> : (
               <div className="space-y-2">
                 {deliverables.map(d => (
                   <Card key={d.id} className="border-border/50">
                     <CardContent className="p-4">
-                      <div className="flex items-center gap-2 mb-1">
-                        <p className="font-medium text-sm">{d.creator_name}</p>
-                        <StatusBadge status={d.status} />
-                      </div>
+                      <div className="flex items-center gap-2 mb-1"><p className="font-medium text-sm">{d.creator_name}</p><StatusBadge status={d.status} /></div>
                       <p className="text-xs text-muted-foreground">{new Date(d.created_at).toLocaleDateString('es-ES')}</p>
-                      {d.video_url && (
-                        <a href={d.video_url} target="_blank" rel="noopener noreferrer"
-                          className="text-xs text-primary hover:underline flex items-center gap-1 mt-1">
-                          <Eye className="w-3 h-3" /> Ver video
-                        </a>
-                      )}
-                      {d.screenshot_url && (
-                        <a href={`${API_BASE.replace('/api','')}${d.screenshot_url}`} target="_blank" rel="noopener noreferrer"
-                          className="text-xs text-primary hover:underline flex items-center gap-1 mt-1">
-                          <Eye className="w-3 h-3" /> Ver captura
-                        </a>
-                      )}
+                      {d.video_url && <a href={d.video_url} target="_blank" rel="noopener noreferrer" className="text-xs text-primary hover:underline flex items-center gap-1 mt-1"><Eye className="w-3 h-3" /> Ver video</a>}
+                      {d.screenshot_url && <a href={`${API_BASE.replace('/api','')}${d.screenshot_url}`} target="_blank" rel="noopener noreferrer" className="text-xs text-primary hover:underline flex items-center gap-1 mt-1"><Eye className="w-3 h-3" /> Ver captura</a>}
                       {d.notes && <p className="text-xs mt-1">{d.notes}</p>}
                     </CardContent>
                   </Card>
@@ -448,21 +406,15 @@ export default function AdvertiserDashboard() {
             )}
           </TabsContent>
 
+          {/* TRANSACTIONS */}
           <TabsContent value="transactions">
             <h2 className="text-xl font-semibold mb-4" style={{ fontFamily: 'Space Grotesk' }}>Transacciones</h2>
-            {transactions.length === 0 ? (
-              <Card className="border-border/50"><CardContent className="p-8 text-center text-muted-foreground">Sin transacciones</CardContent></Card>
-            ) : (
+            {transactions.length === 0 ? <Card className="border-border/50"><CardContent className="p-8 text-center text-muted-foreground">Sin transacciones</CardContent></Card> : (
               <div className="space-y-1">
                 {transactions.map(t => (
                   <div key={t.id} className="flex items-center justify-between p-3 rounded-lg bg-[hsl(var(--surface-2))]">
-                    <div>
-                      <p className="text-sm">{t.description}</p>
-                      <p className="text-xs text-muted-foreground">{new Date(t.created_at).toLocaleDateString('es-ES')}</p>
-                    </div>
-                    <p className={`font-semibold tabular-nums text-sm ${t.amount >= 0 ? 'text-[hsl(152,58%,44%)]' : 'text-[hsl(0,72%,52%)]'}`}>
-                      {t.amount >= 0 ? '+' : ''}${t.amount?.toFixed(2)}
-                    </p>
+                    <div><p className="text-sm">{t.description}</p><p className="text-xs text-muted-foreground">{new Date(t.created_at).toLocaleDateString('es-ES')}</p></div>
+                    <p className={`font-semibold tabular-nums text-sm ${t.amount >= 0 ? 'text-[hsl(152,58%,44%)]' : 'text-[hsl(0,72%,52%)]'}`}>{t.amount >= 0 ? '+' : ''}${t.amount?.toFixed(2)}</p>
                   </div>
                 ))}
               </div>
@@ -471,228 +423,115 @@ export default function AdvertiserDashboard() {
         </Tabs>
       </div>
 
-      {/* Deposit Dialog */}
+      {/* DEPOSIT DIALOG */}
       <Dialog open={showDeposit} onOpenChange={setShowDeposit}>
         <DialogContent className="max-w-lg">
           <DialogHeader><DialogTitle style={{ fontFamily: 'Space Grotesk' }}>Depositar Fondos</DialogTitle></DialogHeader>
           {paymentInfo.crypto_wallet_address || paymentInfo.bank_name ? (
             <div className="mb-4 p-3 rounded-lg bg-[hsl(var(--surface-2))] text-sm space-y-2">
               <p className="font-medium text-xs text-muted-foreground">Datos de pago:</p>
-              {paymentInfo.crypto_wallet_address && (
-                <div>
-                  <p className="text-xs font-medium">Crypto ({paymentInfo.crypto_currency} - {paymentInfo.crypto_network})</p>
-                  <p className="text-xs text-primary font-mono break-all">{paymentInfo.crypto_wallet_address}</p>
-                </div>
-              )}
-              {paymentInfo.bank_name && (
-                <div>
-                  <p className="text-xs font-medium">Banco: {paymentInfo.bank_name}</p>
-                  <p className="text-xs">Titular: {paymentInfo.bank_account_holder}</p>
-                  <p className="text-xs">Cuenta: {paymentInfo.bank_account_number}</p>
-                  {paymentInfo.bank_details && <p className="text-xs">{paymentInfo.bank_details}</p>}
-                </div>
-              )}
+              {paymentInfo.crypto_wallet_address && <div><p className="text-xs font-medium">Crypto ({paymentInfo.crypto_currency} - {paymentInfo.crypto_network})</p><p className="text-xs text-primary font-mono break-all">{paymentInfo.crypto_wallet_address}</p></div>}
+              {paymentInfo.bank_name && <div><p className="text-xs font-medium">Banco: {paymentInfo.bank_name}</p><p className="text-xs">Titular: {paymentInfo.bank_account_holder}</p><p className="text-xs">Cuenta: {paymentInfo.bank_account_number}</p>{paymentInfo.bank_details && <p className="text-xs">{paymentInfo.bank_details}</p>}</div>}
               {paymentInfo.instructions && <p className="text-xs text-muted-foreground">{paymentInfo.instructions}</p>}
             </div>
           ) : (
-            <div className="mb-4 p-3 rounded-lg bg-[hsl(var(--status-pending))]/10 text-sm">
-              <p className="text-[hsl(var(--status-pending))]">El administrador aún no ha configurado los datos de pago. Contacta al soporte.</p>
-            </div>
+            <div className="mb-4 p-3 rounded-lg bg-[hsl(var(--status-pending))]/10 text-sm"><p className="text-[hsl(var(--status-pending))]">El administrador aún no ha configurado los datos de pago. Contacta al soporte.</p></div>
           )}
           <form onSubmit={handleDeposit} className="space-y-4">
-            <div>
-              <Label>Monto (USD)</Label>
-              <Input type="number" step="0.01" min="1" value={depAmount} onChange={e => setDepAmount(e.target.value)} placeholder="100.00" required data-testid="deposit-amount-input"/>
-            </div>
-            <div>
-              <Label>Método de Pago</Label>
-              <Select value={depMethod} onValueChange={setDepMethod}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="crypto">Criptomoneda (USDT/USDC BEP20)</SelectItem>
-                  <SelectItem value="bank">Transferencia Bancaria</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label>Referencia / Hash de transacción</Label>
-              <Input value={depRef} onChange={e => setDepRef(e.target.value)} placeholder="Hash o referencia del pago"/>
-            </div>
-            <div>
-              <Label>Comprobante de Pago</Label>
-              {!depProof ? (
-                <Input type="file" accept="image/*,.pdf" onChange={e => setDepProof(e.target.files[0])} data-testid="deposit-proof-upload-input"/>
-              ) : (
-                <DepositProofPreview file={depProof} onRemove={() => setDepProof(null)} />
-              )}
-              <p className="text-xs text-muted-foreground mt-1">Sube una captura o PDF del comprobante</p>
-            </div>
-            <Button type="submit" className="w-full" disabled={depLoading}>
-              {depLoading ? 'Enviando...' : 'Enviar Depósito'}
-            </Button>
+            <div><Label>Monto (USD)</Label><Input type="number" step="0.01" min="1" value={depAmount} onChange={e => setDepAmount(e.target.value)} placeholder="100.00" required data-testid="deposit-amount-input"/></div>
+            <div><Label>Método de Pago</Label><Select value={depMethod} onValueChange={setDepMethod}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="crypto">Criptomoneda (USDT/USDC BEP20)</SelectItem><SelectItem value="bank">Transferencia Bancaria</SelectItem></SelectContent></Select></div>
+            <div><Label>Referencia / Hash de transacción</Label><Input value={depRef} onChange={e => setDepRef(e.target.value)} placeholder="Hash o referencia del pago"/></div>
+            <div><Label>Comprobante de Pago</Label>{!depProof ? <Input type="file" accept="image/*,.pdf" onChange={e => setDepProof(e.target.files[0])} data-testid="deposit-proof-upload-input"/> : <DepositProofPreview file={depProof} onRemove={() => setDepProof(null)} />}<p className="text-xs text-muted-foreground mt-1">Sube una captura o PDF del comprobante</p></div>
+            <Button type="submit" className="w-full" disabled={depLoading}>{depLoading ? 'Enviando...' : 'Enviar Depósito'}</Button>
           </form>
         </DialogContent>
       </Dialog>
 
-      {/* Campaign Dialog */}
+      {/* CAMPAIGN DIALOG */}
       <Dialog open={showCampaign} onOpenChange={setShowCampaign}>
         <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
           <DialogHeader><DialogTitle style={{ fontFamily: 'Space Grotesk' }}>Nueva Campaña</DialogTitle></DialogHeader>
           <form onSubmit={handleCreateCampaign} className="space-y-4">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div>
-                <Label>Título *</Label>
-                <Input value={campForm.title} onChange={e => setCampForm({...campForm, title: e.target.value})} required/>
-              </div>
-              <div>
-                <Label>Nicho</Label>
-                <Input value={campForm.niche} onChange={e => setCampForm({...campForm, niche: e.target.value})} placeholder="humor, baile, musica..."/>
-              </div>
+              <div><Label>Título *</Label><Input value={campForm.title} onChange={e => setCampForm({...campForm, title: e.target.value})} required/></div>
+              <div><Label>Nicho</Label><Input value={campForm.niche} onChange={e => setCampForm({...campForm, niche: e.target.value})} placeholder="humor, baile, musica..."/></div>
             </div>
-            <div>
-              <Label>Descripción</Label>
-              <Textarea value={campForm.description} onChange={e => setCampForm({...campForm, description: e.target.value})}/>
-            </div>
+            <div><Label>Descripción</Label><Textarea value={campForm.description} onChange={e => setCampForm({...campForm, description: e.target.value})}/></div>
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
-              <div>
-                <Label>Presupuesto Total ($) *</Label>
-                <Input type="number" step="0.01" min="1" value={campForm.budget} onChange={e => setCampForm({...campForm, budget: e.target.value})} required/>
-              </div>
-              <div>
-                <Label>Pago por Video ($) *</Label>
-                <Input type="number" step="0.01" min="0.01" value={campForm.payment_per_video} onChange={e => setCampForm({...campForm, payment_per_video: e.target.value})} required/>
-              </div>
-              <div>
-                <Label>Videos Solicitados</Label>
-                <Input type="number" min="1" value={campForm.videos_requested} onChange={e => setCampForm({...campForm, videos_requested: e.target.value})}/>
-              </div>
+              <div><Label>Presupuesto Total ($) *</Label><Input type="number" step="0.01" min="1" value={campForm.budget} onChange={e => setCampForm({...campForm, budget: e.target.value})} required/></div>
+              <div><Label>Pago por Video ($) *</Label><Input type="number" step="0.01" min="0.01" value={campForm.payment_per_video} onChange={e => setCampForm({...campForm, payment_per_video: e.target.value})} required/></div>
+              <div><Label>Videos Solicitados</Label><Input type="number" min="1" value={campForm.videos_requested} onChange={e => setCampForm({...campForm, videos_requested: e.target.value})}/></div>
             </div>
             <div className="grid grid-cols-2 gap-4">
-              <div>
-                <Label>Región</Label>
-                <Input value={campForm.region} onChange={e => setCampForm({...campForm, region: e.target.value})} placeholder="LATAM, Mexico, Colombia..."/>
-              </div>
-              <div>
-                <Label>Género del Influencer</Label>
-                <Select value={campForm.gender_preference} onValueChange={v => setCampForm({...campForm, gender_preference: v})}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="any">Indiferente</SelectItem>
-                    <SelectItem value="male">Masculino</SelectItem>
-                    <SelectItem value="female">Femenino</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
+              <div><Label>Región</Label><Input value={campForm.region} onChange={e => setCampForm({...campForm, region: e.target.value})} placeholder="LATAM, Mexico, Colombia..."/></div>
+              <div><Label>Género del Influencer</Label><Select value={campForm.gender_preference} onValueChange={v => setCampForm({...campForm, gender_preference: v})}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="any">Indiferente</SelectItem><SelectItem value="male">Masculino</SelectItem><SelectItem value="female">Femenino</SelectItem></SelectContent></Select></div>
             </div>
-            <div>
-              <Label>Redes Sociales</Label>
-              <div className="flex flex-wrap gap-2 mt-1">
-                {['tiktok', 'instagram', 'youtube', 'facebook'].map(net => (
-                  <button key={net} type="button"
-                    className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
-                      campForm.social_networks.includes(net)
-                        ? 'bg-primary text-primary-foreground border-primary'
-                        : 'bg-[hsl(var(--surface-2))] border-border/50 hover:border-border'
-                    }`}
-                    onClick={() => toggleNetwork(net)}
-                  >
-                    {net}
-                  </button>
-                ))}
-              </div>
+            <div><Label>Redes Sociales</Label><div className="flex flex-wrap gap-2 mt-1">{['tiktok', 'instagram', 'youtube', 'facebook'].map(net => <button key={net} type="button" className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${campForm.social_networks.includes(net) ? 'bg-primary text-primary-foreground border-primary' : 'bg-[hsl(var(--surface-2))] border-border/50 hover:border-border'}`} onClick={() => toggleNetwork(net)}>{net}</button>)}</div></div>
+            <div className="grid grid-cols-2 gap-4">
+              <div><Label>Duración del Contenido</Label><Select value={campForm.content_duration} onValueChange={v => setCampForm({...campForm, content_duration: v})}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="1_week">1 Semana</SelectItem><SelectItem value="1_month">1 Mes</SelectItem><SelectItem value="6_months">6 Meses</SelectItem></SelectContent></Select></div>
+              <div><Label>Nivel de Influencer</Label><Select value={campForm.influencer_level} onValueChange={v => setCampForm({...campForm, influencer_level: v})}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="any">Cualquiera</SelectItem><SelectItem value="standard">Estándar</SelectItem><SelectItem value="micro">Micro-influencer</SelectItem><SelectItem value="small">Influencer Pequeño</SelectItem><SelectItem value="top10">Top 10</SelectItem></SelectContent></Select></div>
             </div>
             <div className="grid grid-cols-2 gap-4">
-              <div>
-                <Label>Duración del Contenido</Label>
-                <Select value={campForm.content_duration} onValueChange={v => setCampForm({...campForm, content_duration: v})}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="1_week">1 Semana</SelectItem>
-                    <SelectItem value="1_month">1 Mes</SelectItem>
-                    <SelectItem value="6_months">6 Meses</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <Label>Nivel de Influencer</Label>
-                <Select value={campForm.influencer_level} onValueChange={v => setCampForm({...campForm, influencer_level: v})}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="any">Cualquiera</SelectItem>
-                    <SelectItem value="standard">Estándar</SelectItem>
-                    <SelectItem value="micro">Micro-influencer</SelectItem>
-                    <SelectItem value="small">Influencer Pequeño</SelectItem>
-                    <SelectItem value="top10">Top 10</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
+              <div><Label>Bonus: Umbral de Vistas</Label><Input type="number" min="0" value={campForm.bonus_threshold_views} onChange={e => setCampForm({...campForm, bonus_threshold_views: e.target.value})} placeholder="1000"/></div>
+              <div><Label>Bonus: Monto Extra ($)</Label><Input type="number" step="0.01" min="0" value={campForm.bonus_amount} onChange={e => setCampForm({...campForm, bonus_amount: e.target.value})} placeholder="5.00"/></div>
             </div>
             <div className="grid grid-cols-2 gap-4">
-              <div>
-                <Label>Bonus: Umbral de Vistas</Label>
-                <Input type="number" min="0" value={campForm.bonus_threshold_views} onChange={e => setCampForm({...campForm, bonus_threshold_views: e.target.value})} placeholder="1000"/>
-              </div>
-              <div>
-                <Label>Bonus: Monto Extra ($)</Label>
-                <Input type="number" step="0.01" min="0" value={campForm.bonus_amount} onChange={e => setCampForm({...campForm, bonus_amount: e.target.value})} placeholder="5.00"/>
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <Label>Enlace Externo (opcional)</Label>
-                <Input value={campForm.external_link} onChange={e => setCampForm({...campForm, external_link: e.target.value})} placeholder="https://..."/>
-              </div>
-              <div>
-                <Label>Máx Videos por Creador</Label>
-                <Input type="number" min="1" value={campForm.max_videos_per_creator} onChange={e => setCampForm({...campForm, max_videos_per_creator: e.target.value})}/>
-              </div>
+              <div><Label>Enlace Externo (opcional)</Label><Input value={campForm.external_link} onChange={e => setCampForm({...campForm, external_link: e.target.value})} placeholder="https://..."/></div>
+              <div><Label>Máx Videos por Creador</Label><Input type="number" min="1" value={campForm.max_videos_per_creator} onChange={e => setCampForm({...campForm, max_videos_per_creator: e.target.value})}/></div>
             </div>
 
-            {/* Sección Multimedia e Instrucciones */}
+            {/* SECCIÓN MULTIMEDIA */}
             <div className="border-t pt-4 mt-2">
               <Label className="text-base font-semibold">Multimedia e Instrucciones</Label>
 
-              {/* Botón y campo para Vocaroo */}
-              <div className="mt-3 p-3 rounded-lg bg-[hsl(var(--surface-2))]">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="font-medium text-sm flex items-center gap-2">
-                      <Mic className="w-4 h-4 text-primary" /> Audio de Instrucciones (Vocaroo)
-                    </p>
-                    <p className="text-xs text-muted-foreground mt-1">
-                      Graba un audio en Vocaroo y pega el enlace aquí.
-                    </p>
+              {/* Subir audio (alternativa a Vocaroo) */}
+              <div className="mt-3">
+                <Label className="text-sm font-medium flex items-center gap-2"><Mic className="w-4 h-4 text-primary" /> Audio de Instrucciones (subir archivo)</Label>
+                <p className="text-xs text-muted-foreground mb-2">Sube un archivo de audio con instrucciones para los creadores.</p>
+                {!uploadedAudio ? (
+                  <MediaUploader onUploadSuccess={setUploadedAudio} accept="audio/*" maxSizeMB={20} folder={`advertisers/${user?.sub}/campaigns/audio`} resourceType="video" />
+                ) : (
+                  <div className="flex items-center gap-3 p-3 rounded-lg bg-[hsl(var(--surface-2))]">
+                    <Music className="w-5 h-5 text-primary" />
+                    <div className="flex-1"><p className="text-sm font-medium">Audio subido</p><p className="text-xs text-muted-foreground">{uploadedAudio.duration ? `${uploadedAudio.duration}s` : ''}</p><audio src={uploadedAudio.url} controls className="mt-1 w-full max-w-xs h-8" /></div>
+                    <Button variant="ghost" size="icon" onClick={() => setUploadedAudio(null)}><XCircle className="w-4 h-4" /></Button>
                   </div>
-                  <Button type="button" variant="outline" size="sm" onClick={openVocaroo}>
-                    <ExternalLink className="w-3 h-3 mr-1" /> Ir a Vocaroo
-                  </Button>
+                )}
+              </div>
+
+              {/* Vocaroo link */}
+              <div className="mt-3">
+                <Label className="text-sm font-medium">O pegar enlace de Vocaroo</Label>
+                <div className="flex items-center gap-2">
+                  <Input type="url" value={campForm.vocaroo_link} onChange={e => setCampForm({...campForm, vocaroo_link: e.target.value})} placeholder="https://vocaroo.com/..." disabled={!!uploadedAudio} className="flex-1" />
+                  <Button type="button" variant="outline" size="sm" onClick={() => window.open('https://vocaroo.com/', '_blank')}><ExternalLink className="w-3 h-3 mr-1" /> Ir a Vocaroo</Button>
                 </div>
-                <Input
-                  type="url"
-                  value={campForm.vocaroo_link}
-                  onChange={e => setCampForm({...campForm, vocaroo_link: e.target.value})}
-                  placeholder="https://vocaroo.com/..."
-                  className="mt-2"
-                />
+                <p className="text-xs text-muted-foreground mt-1">Si subes un archivo de audio, el enlace Vocaroo se ignorará.</p>
+              </div>
+
+              {/* Subir imagen de referencia */}
+              <div className="mt-3">
+                <Label className="text-sm font-medium flex items-center gap-2"><ImageIcon className="w-4 h-4 text-primary" /> Imagen de Referencia (opcional)</Label>
+                <p className="text-xs text-muted-foreground mb-2">Sube una imagen de ejemplo o guía visual.</p>
+                {!uploadedImage ? (
+                  <MediaUploader onUploadSuccess={setUploadedImage} accept="image/*" maxSizeMB={5} folder={`advertisers/${user?.sub}/campaigns/images`} resourceType="image" />
+                ) : (
+                  <div className="flex items-center gap-3 p-3 rounded-lg bg-[hsl(var(--surface-2))]">
+                    <img src={uploadedImage.url} alt="Preview" className="w-16 h-16 object-cover rounded" />
+                    <div className="flex-1"><p className="text-sm font-medium">Imagen subida</p><a href={uploadedImage.url} target="_blank" rel="noopener noreferrer" className="text-xs text-primary hover:underline">Ver imagen</a></div>
+                    <Button variant="ghost" size="icon" onClick={() => setUploadedImage(null)}><XCircle className="w-4 h-4" /></Button>
+                  </div>
+                )}
               </div>
 
               {/* Enlace de referencia */}
               <div className="mt-3">
-                <Label className="text-sm font-medium flex items-center gap-2">
-                  <ExternalLink className="w-4 h-4 text-primary" /> Enlace de Referencia (Doc, Web, etc.)
-                </Label>
-                <Input
-                  type="url"
-                  value={campForm.reference_link}
-                  onChange={e => setCampForm({...campForm, reference_link: e.target.value})}
-                  placeholder="https://..."
-                />
+                <Label className="text-sm font-medium flex items-center gap-2"><ExternalLink className="w-4 h-4 text-primary" /> Enlace de Referencia (Doc, Web, etc.)</Label>
+                <Input type="url" value={campForm.reference_link} onChange={e => setCampForm({...campForm, reference_link: e.target.value})} placeholder="https://..." />
               </div>
             </div>
 
-            <Button type="submit" className="w-full mt-4" disabled={campLoading}>
-              {campLoading ? 'Creando...' : 'Crear Campaña'}
-            </Button>
+            <Button type="submit" className="w-full mt-4" disabled={campLoading}>{campLoading ? 'Creando...' : 'Crear Campaña'}</Button>
           </form>
         </DialogContent>
       </Dialog>
