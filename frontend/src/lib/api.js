@@ -1,13 +1,15 @@
 import axios from 'axios';
 
-const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
-export const API_BASE = `${BACKEND_URL}/api`;
+const API_BASE = process.env.REACT_APP_BACKEND_URL || 'http://localhost:8000';
 
 const api = axios.create({
   baseURL: API_BASE,
+  headers: {
+    'Content-Type': 'application/json',
+  },
 });
 
-// Add auth token to requests
+// Interceptor para agregar token
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem('ffm_token');
   if (token) {
@@ -16,191 +18,266 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
-// Handle 401 errors
-api.interceptors.response.use(
-  (response) => response,
-  (error) => {
-    if (error.response?.status === 401) {
-      localStorage.removeItem('ffm_token');
-      localStorage.removeItem('ffm_user');
-      window.location.href = '/login';
-    }
-    return Promise.reject(error);
-  }
-);
-
-export default api;
-
-// Auth
+// ==================== AUTH ====================
 export const authAPI = {
-  register: (data) => api.post('/auth/register', data),
-  login: (data) => api.post('/auth/login', data),
-  me: () => api.get('/auth/me'),
-  saveCreatorProfile: (formData) => api.post('/auth/creator-profile', formData, { headers: { 'Content-Type': 'multipart/form-data' } }),
+  register: (data) => api.post('/api/auth/register', data),
+  login: (data) => api.post('/api/auth/login', data),
+  me: () => api.get('/api/auth/me'),
+  saveCreatorProfile: (formData) => 
+    api.post('/api/auth/creator-profile', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    }),
+  updateProfilePhoto: (formData) =>
+    api.post('/api/auth/profile-photo', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    }),
 };
 
-// Deposits
-export const depositsAPI = {
-  create: (formData) => api.post('/deposits', formData, { headers: { 'Content-Type': 'multipart/form-data' } }),
-  list: () => api.get('/deposits'),
-  approve: (id) => api.put(`/admin/deposits/${id}/approve`),
-  reject: (id, note) => api.put(`/admin/deposits/${id}/reject?note=${encodeURIComponent(note || '')}`),
-};
-
-// Campaigns
+// ==================== CAMPAIGNS ====================
 export const campaignsAPI = {
-  create: (data) => api.post('/campaigns', data),
-  list: (status) => api.get('/campaigns', { params: { status } }),
-  available: () => api.get('/campaigns/available'),
-  get: (id) => api.get(`/campaigns/${id}`),
-  cancel: (id) => api.put(`/campaigns/${id}/cancel`),
+  list: (status) => api.get(`/api/campaigns${status ? `?status=${status}` : ''}`),
+  available: () => api.get('/api/campaigns/available'),
+  create: (data) => api.post('/api/campaigns', data),
+  getById: (id) => api.get(`/api/campaigns/${id}`),
+  cancel: (id) => api.put(`/api/campaigns/${id}/cancel`),
+  uploadMedia: (id, formData) =>
+    api.post(`/api/campaigns/${id}/media`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    }),
 };
 
-// Applications
+// ==================== APPLICATIONS ====================
 export const applicationsAPI = {
-  create: (formData) => api.post('/applications', formData, { headers: { 'Content-Type': 'multipart/form-data' } }),
-  list: (campaignId) => api.get('/applications', { params: { campaign_id: campaignId } }),
-  accept: (id) => api.put(`/applications/${id}/accept`),
-  reject: (id) => api.put(`/applications/${id}/reject`),
+  list: (campaignId) => 
+    api.get(`/api/applications${campaignId ? `?campaign_id=${campaignId}` : ''}`),
+  create: (formData) =>
+    api.post('/api/applications', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    }),
+  accept: (id) => api.put(`/api/applications/${id}/accept`),
+  reject: (id) => api.put(`/api/applications/${id}/reject`),
 };
 
-// Deliverables
+// ==================== DELIVERABLES ====================
 export const deliverablesAPI = {
-  submit: (formData) => api.post('/deliverables', formData, { headers: { 'Content-Type': 'multipart/form-data' } }),
-  list: (campaignId) => api.get('/deliverables', { params: { campaign_id: campaignId } }),
+  list: (campaignId) =>
+    api.get(`/api/deliverables${campaignId ? `?campaign_id=${campaignId}` : ''}`),
+  submit: (formData) =>
+    api.post('/api/deliverables', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    }),
   approve: (id) => api.put(`/admin/deliverables/${id}/approve`),
-  reject: (id, note) => api.put(`/admin/deliverables/${id}/reject?note=${encodeURIComponent(note || '')}`),
+  reject: (id, note) => api.put(`/admin/deliverables/${id}/reject?note=${encodeURIComponent(note)}`),
 };
 
-// KYC
-export const kycAPI = {
-  submit: (formData) => api.post('/kyc', formData, { headers: { 'Content-Type': 'multipart/form-data' } }),
-  list: () => api.get('/kyc'),
-  approve: (id) => api.put(`/admin/kyc/${id}/approve`),
-  reject: (id, note) => api.put(`/admin/kyc/${id}/reject?note=${encodeURIComponent(note || '')}`),
-};
-
-// Withdrawals
-export const withdrawalsAPI = {
-  request: (data) => api.post('/withdrawals', data),
-  list: () => api.get('/withdrawals'),
-  approve: (id) => api.put(`/admin/withdrawals/${id}/approve`),
-  reject: (id) => api.put(`/admin/withdrawals/${id}/reject`),
-};
-
-// Transactions
-export const transactionsAPI = {
-  list: () => api.get('/transactions'),
-};
-
-// Subscriptions
-export const subscriptionsAPI = {
-  setPlan: (data) => api.post('/subscriptions/plan', data),
-  subscribe: (formData) => api.post('/subscriptions/subscribe', formData, { headers: { 'Content-Type': 'multipart/form-data' } }),
-  list: () => api.get('/subscriptions'),
-};
-
-// Premium Content
-export const premiumContentAPI = {
-  create: (formData) => api.post('/premium-content', formData, { headers: { 'Content-Type': 'multipart/form-data' } }),
-  get: (creatorId) => api.get(`/premium-content/${creatorId}`),
-};
-
-// Music Financing
-export const musicFinancingAPI = {
-  request: (formData) => api.post('/music-financing', formData, { headers: { 'Content-Type': 'multipart/form-data' } }),
-  list: () => api.get('/music-financing'),
-  approve: (id, message, amount) => api.put(`/admin/music-financing/${id}/approve?message=${encodeURIComponent(message || '')}&amount=${amount || 0}`),
-  reject: (id, message) => api.put(`/admin/music-financing/${id}/reject?message=${encodeURIComponent(message || '')}`),
-};
-
-// Admin
-export const adminAPI = {
-  stats: () => api.get('/admin/stats'),
-  users: (role) => api.get('/admin/users', { params: { role } }),
-  settings: () => api.get('/admin/settings'),
-  updateSettings: (formData) => api.put('/admin/settings', formData, { headers: { 'Content-Type': 'multipart/form-data' } }),
-  changeRole: (userId, formData) => api.put(`/admin/users/${userId}/role`, formData, { headers: { 'Content-Type': 'multipart/form-data' } }),
-  toggleTop10: (userId, formData) => api.put(`/admin/users/${userId}/top10`, formData, { headers: { 'Content-Type': 'multipart/form-data' } }),
-  recalculateRankings: () => api.post('/admin/rankings/recalculate'),
-};
-
-// Explore
-export const exploreAPI = {
-  creators: (params) => api.get('/explore/creators', { params }),
-  creator: (id) => api.get(`/explore/creators/${id}`),
-};
-
-// Payment Info
-export const paymentInfoAPI = {
-  get: () => api.get('/payment-info'),
-};
-
-// Rankings
-export const rankingsAPI = {
-  get: () => api.get('/rankings'),
-};
-
-// Curator
-export const curatorAPI = {
-  registerPlaylist: (formData) => api.post('/curator/playlist', formData, { headers: { 'Content-Type': 'multipart/form-data' } }),
-  playlists: () => api.get('/curator/playlists'),
-  requestPayment: (formData) => api.post('/curator/payment-request', formData, { headers: { 'Content-Type': 'multipart/form-data' } }),
-  requests: () => api.get('/curator/requests'),
-  approveRequest: (id) => api.put(`/admin/curator/requests/${id}/approve`),
-  rejectRequest: (id, note) => api.put(`/admin/curator/requests/${id}/reject?note=${encodeURIComponent(note || '')}`),
-};
-
-// Referrals
-export const referralsAPI = {
-  get: () => api.get('/referrals'),
-};
-
-// Level Requests
-export const levelRequestsAPI = {
-  request: (formData) => api.post('/creator/level-request', formData, { headers: { 'Content-Type': 'multipart/form-data' } }),
-  list: () => api.get('/creator/level-requests'),
-  approve: (id) => api.put(`/admin/level-requests/${id}/approve`),
-  reject: (id) => api.put(`/admin/level-requests/${id}/reject`),
-};
-
-// Profile Photo
-export const profilePhotoAPI = {
-  upload: (formData) => api.post('/auth/profile-photo', formData, { headers: { 'Content-Type': 'multipart/form-data' } }),
-};
-
-// Admin Wallet
-export const adminWalletAPI = {
-  get: () => api.get('/admin/wallet'),
-};
-
-// Ranking Boards
-export const rankingBoardsAPI = {
-  list: () => api.get('/ranking-boards'),
-  create: (formData) => api.post('/admin/ranking-boards', formData, { headers: { 'Content-Type': 'multipart/form-data' } }),
-  addCreator: (boardId, formData) => api.put(`/admin/ranking-boards/${boardId}/add-creator`, formData, { headers: { 'Content-Type': 'multipart/form-data' } }),
-};
-
-// Deliverable actions
+// ==================== DELIVERABLE ACTIONS ====================
 export const deliverableActionsAPI = {
   releaseFinal: (id) => api.put(`/admin/deliverables/${id}/release-final`),
   claimBonus: (id) => api.put(`/deliverables/${id}/claim-bonus`),
 };
 
-// Campaign media
-export const campaignMediaAPI = {
-  upload: (campaignId, formData) => api.post(`/campaigns/${campaignId}/media`, formData, { headers: { 'Content-Type': 'multipart/form-data' } }),
+// ==================== TRANSACTIONS ====================
+export const transactionsAPI = {
+  list: () => api.get('/api/transactions'),
 };
 
-// Admin set level
+// ==================== DEPOSITS ====================
+export const depositsAPI = {
+  list: () => api.get('/api/deposits'),
+  create: (formData) =>
+    api.post('/api/deposits', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    }),
+  approve: (id) => api.put(`/admin/deposits/${id}/approve`),
+  reject: (id, note) => api.put(`/admin/deposits/${id}/reject?note=${encodeURIComponent(note)}`),
+};
+
+// ==================== WITHDRAWALS ====================
+export const withdrawalsAPI = {
+  list: () => api.get('/api/withdrawals'),
+  request: (data) => api.post('/api/withdrawals', data),
+  approve: (id) => api.put(`/admin/withdrawals/${id}/approve`),
+  reject: (id) => api.put(`/admin/withdrawals/${id}/reject`),
+};
+
+// ==================== KYC ====================
+export const kycAPI = {
+  list: () => api.get('/api/kyc'),
+  submit: (formData) =>
+    api.post('/api/kyc', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    }),
+  approve: (id) => api.put(`/admin/kyc/${id}/approve`),
+  reject: (id, note) => api.put(`/admin/kyc/${id}/reject?note=${encodeURIComponent(note)}`),
+};
+
+// ==================== SUBSCRIPTIONS ====================
+export const subscriptionsAPI = {
+  list: () => api.get('/api/subscriptions'),
+  setPlan: (data) => api.post('/api/subscriptions/plan', data),
+  subscribe: (formData) =>
+    api.post('/api/subscriptions/subscribe', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    }),
+};
+
+// ==================== PREMIUM CONTENT ====================
+export const premiumContentAPI = {
+  create: (formData) =>
+    api.post('/api/premium-content', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    }),
+  get: (creatorId) => api.get(`/api/premium-content/${creatorId}`),
+};
+
+// ==================== MUSIC FINANCING ====================
+export const musicFinancingAPI = {
+  list: () => api.get('/api/music-financing'),
+  request: (formData) =>
+    api.post('/api/music-financing', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    }),
+  approve: (id, message, amount) =>
+    api.put(`/admin/music-financing/${id}/approve?message=${encodeURIComponent(message)}&amount=${amount}`),
+  reject: (id, message) =>
+    api.put(`/admin/music-financing/${id}/reject?message=${encodeURIComponent(message)}`),
+};
+
+// ==================== CURATOR ====================
+export const curatorAPI = {
+  playlists: () => api.get('/api/curator/playlists'),
+  registerPlaylist: (formData) =>
+    api.post('/api/curator/playlist', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    }),
+  requests: () => api.get('/api/curator/requests'),
+  requestPayment: (formData) =>
+    api.post('/api/curator/payment-request', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    }),
+  approveRequest: (id) => api.put(`/admin/curator/requests/${id}/approve`),
+  rejectRequest: (id, note) =>
+    api.put(`/admin/curator/requests/${id}/reject?note=${encodeURIComponent(note)}`),
+};
+
+// ==================== REFERRALS ====================
+export const referralsAPI = {
+  get: () => api.get('/api/referrals'),
+};
+
+// ==================== LEVEL REQUESTS ====================
+export const levelRequestsAPI = {
+  list: () => api.get('/api/creator/level-requests'),
+  request: (formData) =>
+    api.post('/api/creator/level-request', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    }),
+  approve: (id) => api.put(`/admin/level-requests/${id}/approve`),
+  reject: (id) => api.put(`/admin/level-requests/${id}/reject`),
+};
+
+// ==================== PROFILE PHOTO ====================
+export const profilePhotoAPI = {
+  upload: (formData) =>
+    api.post('/api/auth/profile-photo', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    }),
+};
+
+// ==================== ADMIN ====================
+export const adminAPI = {
+  stats: () => api.get('/api/admin/stats'),
+  settings: () => api.get('/api/admin/settings'),
+  updateSettings: (formData) =>
+    api.put('/api/admin/settings', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    }),
+  users: (role) => api.get(`/api/admin/users${role ? `?role=${role}` : ''}`),
+  toggleTop10: (userId, formData) =>
+    api.put(`/api/admin/users/${userId}/top10`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    }),
+  changeRole: (userId, formData) =>
+    api.put(`/api/admin/users/${userId}/role`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    }),
+};
+
+export const adminWalletAPI = {
+  get: () => api.get('/api/admin/wallet'),
+};
+
+export const rankingBoardsAPI = {
+  list: () => api.get('/api/ranking-boards'),
+  create: (formData) =>
+    api.post('/api/admin/ranking-boards', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    }),
+  addCreator: (boardId, formData) =>
+    api.put(`/api/admin/ranking-boards/${boardId}/add-creator`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    }),
+};
+
 export const adminLevelAPI = {
-  setLevel: (userId, formData) => api.put(`/admin/users/${userId}/level`, formData, { headers: { 'Content-Type': 'multipart/form-data' } }),
+  setLevel: (userId, formData) =>
+    api.put(`/api/admin/users/${userId}/level`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    }),
 };
 
-// Micro Tasks
-export const microTasksAPI = {
-  submit: (formData) => api.post('/micro-tasks', formData, { headers: { 'Content-Type': 'multipart/form-data' } }),
-  list: () => api.get('/micro-tasks'),
-  approve: (id) => api.put(`/admin/micro-tasks/${id}/approve`),
-  reject: (id) => api.put(`/admin/micro-tasks/${id}/reject`),
+// ==================== PAYMENT INFO ====================
+export const paymentInfoAPI = {
+  get: () => api.get('/api/payment-info'),
 };
+
+// ==================== EXPLORE ====================
+export const exploreAPI = {
+  creators: (niche, region) =>
+    api.get(`/api/explore/creators${niche ? `?niche=${niche}${region ? `&region=${region}` : ''}` : ''}`),
+  creator: (id) => api.get(`/api/explore/creators/${id}`),
+};
+
+// ==================== MEDIA & CLOUDINARY (NUEVO) ====================
+export const mediaAPI = {
+  upload: (formData) =>
+    api.post('/api/media/upload', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+      onUploadProgress: (progressEvent) => {
+        const percentCompleted = Math.round((progressEvent.loaded * 100) / progressEvent.total);
+        formData.onProgress?.(percentCompleted);
+      },
+    }),
+  list: (creatorId) => api.get(`/api/media${creatorId ? `?creator_id=${creatorId}` : ''}`),
+  delete: (ids) => api.delete('/api/media', { data: { media_ids: ids } }),
+  getSecureUrl: (publicId, resourceType = 'image') =>
+    api.post('/api/media/secure-url', { public_id: publicId, resource_type: resourceType }),
+};
+
+export const cloudinaryAPI = {
+  getSignature: (params) => api.post('/api/cloudinary/sign-upload', params),
+  getUsage: () => api.get('/api/cloudinary/usage'),
+};
+
+// ==================== CHAT (NUEVO) ====================
+export const chatAPI = {
+  sendMessage: (data) => api.post('/api/chat/send', data),
+  sendAudio: (formData) =>
+    api.post('/api/chat/send/audio', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    }),
+  sendMedia: (formData) =>
+    api.post('/api/chat/send/media', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    }),
+  getConversations: () => api.get('/api/chat/conversations'),
+  getMessages: (userId, limit = 50, before = null) =>
+    api.get(`/api/chat/messages/${userId}?limit=${limit}${before ? `&before=${before}` : ''}`),
+  payForContent: (messageId, payment) =>
+    api.post(`/api/chat/messages/${messageId}/pay`, payment),
+  deleteMessage: (messageId) => api.delete(`/api/chat/messages/${messageId}`),
+  markAsRead: (messageIds) => api.post('/api/chat/mark-read', { message_ids: messageIds }),
+};
+
+export default api;
+export { API_BASE };
