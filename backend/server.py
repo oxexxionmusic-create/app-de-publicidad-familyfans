@@ -1,5 +1,5 @@
 # server.py
-from fastapi import FastAPI, APIRouter, Depends, HTTPException, UploadFile, File, Form, Query
+from fastapi import FastAPI, APIRouter, Depends, HTTPException, UploadFile, File, Form, Query, Request
 from fastapi.staticfiles import StaticFiles
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
@@ -11,25 +11,28 @@ from typing import List, Optional
 from datetime import datetime, timezone, timedelta
 from bson import ObjectId
 
-# ==================== IMPORTACIONES DE MÓDULOS PROPIOS ====================
+# --- Cloudinary imports (añadidos) ---
+import cloudinary
+import cloudinary.uploader
+import cloudinary.api
+import cloudinary.utils
+
+# --- Módulos propios (auth) ---
 from auth import (
     hash_password, verify_password, create_token,
     get_current_user, require_admin, require_advertiser, require_creator
 )
-# Importar routers de Cloudinary y Media
-from cloudinary import router as cloudinary_router
-from media import router as media_router
 
 # ==================== CONFIGURACIÓN INICIAL ====================
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
 
-# Configuración de Cloudinary (ya se hace en cloudinary.py, pero aseguramos)
-import cloudinary
+# Configurar Cloudinary desde variables de entorno
 cloudinary.config(
     cloud_name=os.environ.get("CLOUDINARY_CLOUD_NAME"),
     api_key=os.environ.get("CLOUDINARY_API_KEY"),
-    api_secret=os.environ.get("CLOUDINARY_API_SECRET")
+    api_secret=os.environ.get("CLOUDINARY_API_SECRET"),
+    secure=True
 )
 
 mongo_url = os.environ['MONGO_URL']
@@ -121,7 +124,6 @@ async def startup():
             "level_request_pending": False
         }})
     
-    # Iniciar job de limpieza en background
     asyncio.create_task(cleanup_expired_content())
 
 # ==================== AUTH ====================
@@ -374,8 +376,8 @@ class CampaignCreate(BaseModel):
     max_videos_per_creator: int = 1
     vocaroo_link: str = ""
     reference_link: str = ""
-    audio_url: str = ""          # Añadido para Cloudinary
-    photo_url: str = ""          # Añadido para Cloudinary
+    audio_url: str = ""
+    photo_url: str = ""
 
 @api.post("/campaigns")
 async def create_campaign(req: CampaignCreate, user=Depends(require_advertiser)):
@@ -806,10 +808,8 @@ async def reject_deliverable(del_id: str, note: str = "", user=Depends(require_a
 
 # ==================== CLEANUP JOB ====================
 async def cleanup_expired_content():
-    """Limpieza automática de contenido expirado (corre cada 24 horas)"""
     while True:
         try:
-            # Encontrar contenido expirado
             expired = await db.media_content.find({
                 "expires_at": {"$lt": datetime.now()},
                 "is_deleted": False
@@ -825,10 +825,8 @@ async def cleanup_expired_content():
                         {"$inc": {"used_mb": -size_mb}}
                     )
                 
-                # Eliminar de Cloudinary (si existe el servicio)
                 try:
                     if media.get("cloudinary_public_id"):
-                        import cloudinary.uploader
                         cloudinary.uploader.destroy(
                             media["cloudinary_public_id"],
                             resource_type="video" if media["type"] == "video" else "image"
@@ -1897,13 +1895,197 @@ async def admin_set_level(user_id: str, level: str = Form(...), user=Depends(req
     )
     return {"message": f"Nivel actualizado a {level}"}
 
+# ==================== CLOUDINARY SIGN UPLOAD (AGREGADO DIRECTAMENTE) ====================
+@api.post("/cloudinary/sign-upload")
+async def sign_upload(current_user=Depends(get_current_user)):
+    """Genera firma para subir archivos directamente a Cloudinary desde el frontend"""
+    try:
+        timestamp = int(datetime.now().timestamp())
+        folder = f"familyfansmony/{current_user['role']}/{current_user['sub']}"
+        
+        params = {
+            "timestamp": timestamp,
+            "folder": folder,
+            "resource_type": "auto",
+        }
+        
+        signature = cloudinary.utils.api_sign_request(params, cloudinary.config().api_secret)
+        
+        return {
+            "signature": signature,
+            "timestamp": timestamp,
+            "api_key": cloudinary.config().api_key,
+            "cloud_name": cloudinary.config().cloud_name,
+            "folder": folder
+        }
+    except Exception as e:
+        logger.error(f"Error generando firma Cloudinary: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error al generar firma: {str(e)}")
+
+# ==================== CLOUDINARY WEBHOOK (opcional) ====================
+@api.post("/cloudinary/webhook")
+async def cloudinary_webhook(request: Request):
+    """Webhook para notificaciones de Cloudinary"""
+    try:
+        data = await request.json()
+        event_type = data.get("event_type")
+        public_id = data.get("public_id")
+        
+        if event_type == "delete":
+            await db.media_content.update_many(
+                {"cloudinary_public_id": public_id},
+                {"$set": {"is_deleted": True, "deleted_at": now_iso()}}
+            )
+        return {"status": "ok"}
+    except Exception as e:
+        logger.error(f"Error en webhook Cloudinary: {str(e)}")
+        return {"status": "error", "message": str(e)}
+
+# ==================== CLOUDINARY USAGE (admin) ====================
+@api.get("/cloudinary/usage")
+async def get_cloudinary_usage(current_user=Depends(require_admin)):
+    """Obtiene estadísticas de uso de Cloudinary"""
+    try:
+        usage = cloudinary.api.usage()
+        return {
+            "used": usage.get("usage", {}),
+            "last_updated": usage.get("last_updated")
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error al obtener uso: {str(e)}")
+
+# ==================== MEDIA UPLOAD (VIDEO) ====================
+@api.post("/media/upload/video")
+async def upload_video(
+    file: UploadFile = File(...),
+    folder: str = Form(default="campaigns"),
+    current_user=Depends(get_current_user)
+):
+    """Sube un video a Cloudinary (procesado por el backend)"""
+    allowed_types = ["video/mp4", "video/quicktime", "video/x-msvideo", "video/webm"]
+    if file.content_type not in allowed_types:
+        raise HTTPException(400, "Tipo de archivo no permitido. Solo videos MP4, MOV, AVI o WebM")
+    
+    max_size = 500 * 1024 * 1024  # 500MB
+    content = await file.read()
+    if len(content) > max_size:
+        raise HTTPException(400, "El video no puede superar los 500MB")
+    
+    public_id = f"{current_user['sub']}/{folder}/{uuid.uuid4().hex}"
+    
+    try:
+        upload_result = cloudinary.uploader.upload(
+            content,
+            resource_type="video",
+            public_id=public_id,
+            folder=folder,
+            chunk_size=6000000,
+            eager=[
+                {"width": 1920, "height": 1080, "crop": "limit", "format": "mp4"},
+                {"width": 1280, "height": 720, "crop": "limit", "format": "mp4"},
+                {"width": 640, "height": 360, "crop": "limit", "format": "mp4"}
+            ],
+            eager_async=True
+        )
+        
+        return {
+            "success": True,
+            "public_id": upload_result.get("public_id"),
+            "url": upload_result.get("secure_url"),
+            "format": upload_result.get("format"),
+            "duration": upload_result.get("duration"),
+            "bytes": upload_result.get("bytes"),
+            "width": upload_result.get("width"),
+            "height": upload_result.get("height"),
+            "resource_type": upload_result.get("resource_type")
+        }
+    except Exception as e:
+        raise HTTPException(500, f"Error al subir video: {str(e)}")
+
+# ==================== MEDIA UPLOAD (IMAGE) ====================
+@api.post("/media/upload/image")
+async def upload_image(
+    file: UploadFile = File(...),
+    folder: str = Form(default="profiles"),
+    current_user=Depends(get_current_user)
+):
+    """Sube una imagen a Cloudinary"""
+    allowed_types = ["image/jpeg", "image/jpg", "image/png", "image/webp"]
+    if file.content_type not in allowed_types:
+        raise HTTPException(400, "Tipo de archivo no permitido. Solo JPEG, PNG o WebP")
+    
+    max_size = 10 * 1024 * 1024  # 10MB
+    content = await file.read()
+    if len(content) > max_size:
+        raise HTTPException(400, "La imagen no puede superar los 10MB")
+    
+    public_id = f"{current_user['sub']}/{folder}/{uuid.uuid4().hex}"
+    
+    try:
+        upload_result = cloudinary.uploader.upload(
+            content,
+            public_id=public_id,
+            folder=folder,
+            transformation=[
+                {"width": 1920, "height": 1080, "crop": "limit", "quality": "auto"},
+                {"width": 800, "height": 600, "crop": "limit", "quality": "auto"}
+            ]
+        )
+        
+        return {
+            "success": True,
+            "public_id": upload_result.get("public_id"),
+            "url": upload_result.get("secure_url"),
+            "format": upload_result.get("format"),
+            "bytes": upload_result.get("bytes"),
+            "width": upload_result.get("width"),
+            "height": upload_result.get("height")
+        }
+    except Exception as e:
+        raise HTTPException(500, f"Error al subir imagen: {str(e)}")
+
+# ==================== MEDIA SIGNED URL ====================
+@api.get("/media/signed-url/{public_id}")
+async def get_signed_url(
+    public_id: str,
+    resource_type: str = Query(default="video", regex="^(video|image)$"),
+    expires_in: int = Query(default=3600, ge=300, le=86400),
+    current_user=Depends(get_current_user)
+):
+    """Genera una URL firmada para acceder a un recurso de Cloudinary"""
+    try:
+        expiration_time = int(datetime.now().timestamp()) + expires_in
+        url = cloudinary.utils.cloudinary_url(
+            public_id,
+            resource_type=resource_type,
+            secure=True,
+            sign_url=True,
+            expires_at=expiration_time
+        )[0]
+        return {"url": url, "expires_in": expires_in}
+    except Exception as e:
+        raise HTTPException(500, f"Error generando URL firmada: {str(e)}")
+
+# ==================== MEDIA DELETE ====================
+@api.delete("/media/delete/{public_id}")
+async def delete_media(
+    public_id: str,
+    resource_type: str = Query(default="video", regex="^(video|image)$"),
+    current_user=Depends(get_current_user)
+):
+    """Elimina un recurso de Cloudinary (solo el propietario)"""
+    if not public_id.startswith(current_user['sub']):
+        raise HTTPException(403, "No tienes permiso para eliminar este recurso")
+    
+    try:
+        result = cloudinary.uploader.destroy(public_id, resource_type=resource_type)
+        return {"success": True, "result": result.get("result")}
+    except Exception as e:
+        raise HTTPException(500, f"Error al eliminar recurso: {str(e)}")
+
 # ==================== STATIC FILES & MIDDLEWARE ====================
 app.mount("/api/uploads", StaticFiles(directory=str(UPLOAD_DIR)), name="uploads")
-
-# Incluir routers de módulos externos
 app.include_router(api)
-app.include_router(cloudinary_router)   # Rutas de /api/cloudinary
-app.include_router(media_router)        # Rutas de /api/media
 
 app.add_middleware(
     CORSMiddleware,
