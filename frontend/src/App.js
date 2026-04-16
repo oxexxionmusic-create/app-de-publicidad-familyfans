@@ -4,7 +4,7 @@ import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-route
 import { Toaster } from "@/components/ui/sonner";
 import { authAPI } from "@/lib/api";
 
-// Importaciones de tus páginas (asegúrate de que existan en tu carpeta pages/)
+// Importaciones de páginas
 import Home from "@/pages/Home";
 import Login from "@/pages/Login";
 import Register from "@/pages/Register";
@@ -15,6 +15,8 @@ import FanDashboard from "@/pages/FanDashboard";
 import Rankings from "@/pages/Rankings";
 import Explore from "@/pages/Explore";
 import CreatorProfile from "@/pages/CreatorProfile";
+import CreatorPrivateChat from "@/pages/CreatorPrivateChat";
+import FanPrivateChat from "@/pages/FanPrivateChat";
 
 // Contexto de Autenticación
 const AuthContext = createContext(null);
@@ -80,7 +82,12 @@ function ProtectedRoute({ children, roles }) {
   const location = useLocation();
 
   if (loading) {
-    return <div className="flex items-center justify-center h-screen">Cargando...</div>;
+    return (
+      <div className="flex items-center justify-center h-screen">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
+        <p className="text-muted-foreground">Cargando...</p>
+      </div>
+    );
   }
 
   if (!user) {
@@ -99,7 +106,12 @@ function DashboardRedirect() {
   const { user, loading } = useAuth();
 
   if (loading) {
-    return <div className="flex items-center justify-center h-screen">Cargando...</div>;
+    return (
+      <div className="flex items-center justify-center h-screen">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
+        <p className="text-muted-foreground">Cargando...</p>
+      </div>
+    );
   }
 
   if (!user) return <Navigate to="/login" replace />;
@@ -164,6 +176,16 @@ function App() {
             }
           />
 
+          {/* Chat Privado para Creadores */}
+          <Route
+            path="/creator/chat/*"
+            element={
+              <ProtectedRoute roles={["creator", "admin"]}>
+                <CreatorPrivateChat />
+              </ProtectedRoute>
+            }
+          />
+
           {/* Fan */}
           <Route
             path="/fan/*"
@@ -174,7 +196,17 @@ function App() {
             }
           />
 
-          {/* Ruta por defecto */}
+          {/* Chat Privado para Fans */}
+          <Route
+            path="/fan/chat/*"
+            element={
+              <ProtectedRoute roles={["fan", "admin"]}>
+                <FanPrivateChat />
+              </ProtectedRoute>
+            }
+          />
+
+          {/* Ruta por defecto (404 -> Home) */}
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
         <Toaster position="top-right" richColors />
