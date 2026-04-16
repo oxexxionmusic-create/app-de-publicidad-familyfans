@@ -1,109 +1,286 @@
-import { useState } from "react";
-import { useNavigate, Link } from "react-router-dom";
-import { useAuth } from "@/App";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { authAPI } from "@/lib/api";
-import { toast } from "sonner";
+// src/pages/Register.js
+import { useState } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
+import { useAuth } from '@/App';
+import { authAPI } from '@/lib/api';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { toast } from 'sonner';
+import { Zap, User, Mail, Lock, Megaphone, Palette, Heart, Loader2, Eye, EyeOff } from 'lucide-react';
 
 export default function Register() {
-  const [form, setForm] = useState({
-    email: "",
-    password: "",
-    name: "",
-    role: "fan",
-    referral_code: "",
-  });
+  const [name, setName] = useState('');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [role, setRole] = useState('fan');
+  const [referralCode, setReferralCode] = useState('');
   const [loading, setLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [error, setError] = useState('');
   const { login } = useAuth();
   const navigate = useNavigate();
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    setError('');
+
+    // Validaciones
+    if (!name.trim() || !email.trim() || !password.trim()) {
+      setError('Todos los campos son obligatorios.');
+      return;
+    }
+
+    if (!/^\S+@\S+\.\S+$/.test(email)) {
+      setError('Ingresa un correo electrónico válido.');
+      return;
+    }
+
+    if (password.length < 6) {
+      setError('La contraseña debe tener al menos 6 caracteres.');
+      return;
+    }
+
     setLoading(true);
     try {
-      const res = await authAPI.register(form);
+      const res = await authAPI.register({
+        name,
+        email,
+        password,
+        role,
+        referral_code: referralCode
+      });
       login(res.data.token, res.data.user);
-      toast.success("Cuenta creada!");
-      navigate("/dashboard");
+      toast.success('¡Cuenta creada exitosamente!');
+
+      // Redirección según rol
+      if (role === 'advertiser') navigate('/advertiser');
+      else if (role === 'creator') navigate('/creator');
+      else navigate('/fan');
     } catch (err) {
-      toast.error(err.response?.data?.detail || "Error al registrar");
+      const detail = err.response?.data?.detail;
+      if (detail?.includes('Email ya registrado')) {
+        setError('Este correo electrónico ya está registrado.');
+      } else {
+        setError(detail || 'Error al registrarse. Intenta de nuevo.');
+      }
+      toast.error(detail || 'Error al registrarse');
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
+  const roles = [
+    {
+      value: 'advertiser',
+      label: 'Anunciante',
+      desc: 'Promociona productos y crea campañas',
+      icon: Megaphone,
+      color: 'text-primary'
+    },
+    {
+      value: 'creator',
+      label: 'Creador',
+      desc: 'Monetiza tu contenido e influencia',
+      icon: Palette,
+      color: 'text-[hsl(199,78%,48%)]'
+    },
+    {
+      value: 'fan',
+      label: 'Fan',
+      desc: 'Explora y suscríbete a creadores',
+      icon: Heart,
+      color: 'text-[hsl(0,72%,52%)]'
+    },
+  ];
+
   return (
-    <div className="min-h-screen flex items-center justify-center p-4">
-      <Card className="w-full max-w-md">
-        <CardHeader>
-          <CardTitle>Registrarse</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div>
-              <Label>Nombre</Label>
-              <Input
-                value={form.name}
-                onChange={(e) => setForm({ ...form, name: e.target.value })}
-                required
-              />
+    <div className="min-h-screen bg-background flex">
+      {/* Panel izquierdo */}
+      <div className="hidden lg:flex flex-1 items-center justify-center bg-[hsl(var(--surface-2))] p-12">
+        <div className="max-w-md">
+          <div className="flex items-center gap-2 mb-8">
+            <div className="w-10 h-10 rounded-lg bg-primary flex items-center justify-center">
+              <Zap className="w-6 h-6 text-primary-foreground" />
             </div>
-            <div>
-              <Label>Email</Label>
-              <Input
-                type="email"
-                value={form.email}
-                onChange={(e) => setForm({ ...form, email: e.target.value })}
-                required
-              />
-            </div>
-            <div>
-              <Label>Contraseña</Label>
-              <Input
-                type="password"
-                value={form.password}
-                onChange={(e) => setForm({ ...form, password: e.target.value })}
-                required
-              />
-            </div>
-            <div>
-              <Label>Rol</Label>
-              <Select
-                value={form.role}
-                onValueChange={(value) => setForm({ ...form, role: value })}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="fan">Fan</SelectItem>
-                  <SelectItem value="creator">Creador</SelectItem>
-                  <SelectItem value="advertiser">Anunciante</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label>Código de Referido (opcional)</Label>
-              <Input
-                value={form.referral_code}
-                onChange={(e) => setForm({ ...form, referral_code: e.target.value })}
-              />
-            </div>
-            <Button type="submit" className="w-full" disabled={loading}>
-              {loading ? "Creando cuenta..." : "Registrarse"}
-            </Button>
-          </form>
-          <p className="text-center text-sm mt-4">
-            ¿Ya tienes cuenta?{" "}
-            <Link to="/login" className="text-primary underline">
-              Inicia sesión
-            </Link>
+            <span className="text-2xl font-semibold" style={{ fontFamily: 'Space Grotesk' }}>
+              Family Fans Mony
+            </span>
+          </div>
+          <h2 className="text-3xl font-semibold mb-4" style={{ fontFamily: 'Space Grotesk' }}>
+            Únete a la comunidad
+          </h2>
+          <p className="text-muted-foreground">
+            Crea tu cuenta y comienza a conectar con marcas, creadores y fans en un ecosistema seguro y transparente.
           </p>
-        </CardContent>
-      </Card>
+        </div>
+      </div>
+
+      {/* Panel derecho */}
+      <div className="flex-1 flex items-center justify-center p-6">
+        <Card className="w-full max-w-md border-border/50 shadow-lg">
+          <CardHeader className="text-center">
+            <div className="lg:hidden flex items-center justify-center gap-2 mb-4">
+              <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center">
+                <Zap className="w-5 h-5 text-primary-foreground" />
+              </div>
+              <span className="font-semibold text-lg" style={{ fontFamily: 'Space Grotesk' }}>
+                Family Fans Mony
+              </span>
+            </div>
+            <CardTitle style={{ fontFamily: 'Space Grotesk' }}>Crear Cuenta</CardTitle>
+            <CardDescription>Selecciona tu rol y completa tus datos</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <form onSubmit={handleSubmit} className="space-y-4">
+              {error && (
+                <Alert variant="destructive">
+                  <AlertDescription>{error}</AlertDescription>
+                </Alert>
+              )}
+
+              {/* Selección de rol */}
+              <div className="space-y-2">
+                <Label>Tipo de Cuenta</Label>
+                <RadioGroup
+                  value={role}
+                  onValueChange={setRole}
+                  className="grid grid-cols-1 gap-2"
+                >
+                  {roles.map(r => (
+                    <label
+                      key={r.value}
+                      htmlFor={`role-${r.value}`}
+                      className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${
+                        role === r.value
+                          ? 'border-primary bg-primary/5'
+                          : 'border-border/50 hover:border-border'
+                      }`}
+                    >
+                      <RadioGroupItem
+                        value={r.value}
+                        id={`role-${r.value}`}
+                        data-testid={`register-role-radio-${r.value}`}
+                        disabled={loading}
+                      />
+                      <r.icon className={`w-5 h-5 ${r.color}`} />
+                      <div>
+                        <p className="text-sm font-medium">{r.label}</p>
+                        <p className="text-xs text-muted-foreground">{r.desc}</p>
+                      </div>
+                    </label>
+                  ))}
+                </RadioGroup>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="name">Nombre Completo</Label>
+                <div className="relative">
+                  <User className="absolute left-3 top-3 w-4 h-4 text-muted-foreground" />
+                  <Input
+                    id="name"
+                    placeholder="Tu nombre"
+                    value={name}
+                    onChange={e => setName(e.target.value)}
+                    className="pl-10"
+                    required
+                    data-testid="register-name-input"
+                    disabled={loading}
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="email">Correo Electrónico</Label>
+                <div className="relative">
+                  <Mail className="absolute left-3 top-3 w-4 h-4 text-muted-foreground" />
+                  <Input
+                    id="email"
+                    type="email"
+                    placeholder="tu@email.com"
+                    value={email}
+                    onChange={e => setEmail(e.target.value)}
+                    className="pl-10"
+                    required
+                    data-testid="register-email-input"
+                    disabled={loading}
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="password">Contraseña</Label>
+                <div className="relative">
+                  <Lock className="absolute left-3 top-3 w-4 h-4 text-muted-foreground" />
+                  <Input
+                    id="password"
+                    type={showPassword ? 'text' : 'password'}
+                    placeholder="Mínimo 6 caracteres"
+                    value={password}
+                    onChange={e => setPassword(e.target.value)}
+                    className="pl-10 pr-10"
+                    required
+                    data-testid="register-password-input"
+                    disabled={loading}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-3 top-3 text-muted-foreground hover:text-foreground"
+                    tabIndex={-1}
+                  >
+                    {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  La contraseña debe tener al menos 6 caracteres.
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="referral">Código de Referido (opcional)</Label>
+                <Input
+                  id="referral"
+                  placeholder="Ej: AB12CD34"
+                  value={referralCode}
+                  onChange={e => setReferralCode(e.target.value)}
+                  data-testid="register-referral-input"
+                  disabled={loading}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Si tienes un código de referido, ingrésalo aquí.
+                </p>
+              </div>
+
+              <Button
+                type="submit"
+                className="w-full"
+                disabled={loading}
+                data-testid="register-form-submit-button"
+              >
+                {loading ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Creando cuenta...
+                  </>
+                ) : (
+                  'Crear Cuenta'
+                )}
+              </Button>
+            </form>
+
+            <p className="text-sm text-muted-foreground text-center mt-4">
+              ¿Ya tienes cuenta?{' '}
+              <Link to="/login" className="text-primary hover:underline">
+                Inicia sesión
+              </Link>
+            </p>
+          </CardContent>
+        </Card>
+      </div>
     </div>
   );
 }
