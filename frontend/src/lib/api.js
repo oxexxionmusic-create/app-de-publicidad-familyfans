@@ -126,31 +126,43 @@ export const premiumContentAPI = {
     headers: { 'Content-Type': 'multipart/form-data' },
   }),
   get: (creatorId) => api.get(`/premium-content/${creatorId}`),
-  // Nuevo: obtener URL firmada para contenido (con blur si no está pagado)
+  // Obtener URL firmada para contenido (con blur si no está pagado)
   getSignedUrl: (publicId, resourceType = 'image') =>
     api.get(`/media/signed-url/${publicId}`, { params: { resource_type: resourceType } }),
 };
 
 // ==================== MEDIA (CLOUDINARY) ====================
 export const mediaAPI = {
-  // Subir video (directo desde el frontend con firma)
+  // Solicitar firma para subir directamente a Cloudinary
   signUpload: (params) => api.post('/cloudinary/sign-upload', params),
+  // Subir video (a través del backend)
   uploadVideo: (formData) => api.post('/media/upload/video', formData, {
     headers: { 'Content-Type': 'multipart/form-data' },
   }),
+  // Subir imagen (a través del backend)
   uploadImage: (formData) => api.post('/media/upload/image', formData, {
     headers: { 'Content-Type': 'multipart/form-data' },
   }),
+  // Obtener URL firmada para un recurso
   getSignedUrl: (publicId, resourceType = 'video', expiresIn = 3600) =>
     api.get(`/media/signed-url/${publicId}`, { params: { resource_type: resourceType, expires_in: expiresIn } }),
+  // Eliminar recurso
   deleteMedia: (publicId, resourceType = 'video') =>
     api.delete(`/media/delete/${publicId}`, { params: { resource_type: resourceType } }),
+  // Obtener información de un recurso
   getInfo: (publicId) => api.get(`/media/info/${publicId}`),
+  // Listar todos los medios (admin) – endpoint opcional
+  listAll: (params) => api.get('/admin/media', { params }),
 };
 
 // ==================== STORAGE QUOTA ====================
 export const storageAPI = {
+  // Obtener uso de almacenamiento de un creador (o usuario actual)
   getUsage: (creatorId) => api.get(`/creator/storage/${creatorId}`),
+  // Ajustar límite manualmente (admin) – endpoint opcional
+  setLimit: (creatorId, data) => api.put(`/admin/storage/${creatorId}/limit`, data),
+  // Obtener uso de todos los creadores (admin) – endpoint opcional
+  getAllUsage: () => api.get('/admin/storage'),
 };
 
 // ==================== MUSIC FINANCING ====================
@@ -273,13 +285,27 @@ export const microTasksAPI = {
 
 // ==================== CHAT ====================
 export const chatAPI = {
+  // Enviar mensaje
   sendMessage: (data) => api.post('/chat/messages', data),
+  // Obtener conversaciones del usuario actual
   getConversations: () => api.get('/chat/conversations'),
+  // Obtener mensajes con un usuario específico
   getMessages: (otherUserId, limit = 50, before) =>
     api.get(`/chat/messages/${otherUserId}`, { params: { limit, before } }),
+  // Marcar mensaje como leído
   markAsRead: (messageId) => api.put(`/chat/messages/${messageId}/read`),
+  // Pagar para desbloquear contenido de pago en chat
   payForContent: (messageId) => api.post('/chat/pay', { message_id: messageId }),
-  // Obtener URL firmada para contenido de chat (audio/video/imagen)
+  // Obtener URL firmada para archivos multimedia del chat
   getChatMediaUrl: (publicId, resourceType = 'image') =>
     api.get(`/chat/media/signed/${publicId}`, { params: { resource_type: resourceType } }),
+  // Obtener todas las conversaciones (admin) – endpoint opcional
+  getAllConversations: () => api.get('/admin/chat/conversations'),
+};
+
+// ==================== CAMPAIGN MEDIA (para anunciantes) ====================
+export const campaignMediaAPI = {
+  upload: (campaignId, formData) => api.post(`/campaigns/${campaignId}/media`, formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  }),
 };
