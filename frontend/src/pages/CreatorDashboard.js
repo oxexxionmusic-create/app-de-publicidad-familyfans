@@ -85,7 +85,7 @@ export default function CreatorDashboard() {
   const [contentForm, setContentForm] = useState({
     content_type: 'post', title: '', description: '', media_url: ''
   });
-  const [uploadedMedia, setUploadedMedia] = useState(null); // { public_id, url, type, size_mb, duration? }
+  const [uploadedMedia, setUploadedMedia] = useState(null); // { public_id, url, bytes, duration, resource_type }
 
   // Music Financing
   const [showFinancing, setShowFinancing] = useState(false);
@@ -301,15 +301,19 @@ export default function CreatorDashboard() {
       fd.append('content_type', contentForm.content_type);
       fd.append('title', contentForm.title);
       fd.append('description', contentForm.description);
+      
       if (uploadedMedia) {
         fd.append('media_url', uploadedMedia.url);
         fd.append('cloudinary_public_id', uploadedMedia.public_id);
         fd.append('media_type', uploadedMedia.resource_type);
-        fd.append('size_mb', uploadedMeta?.size_mb || (uploadedMedia.bytes / (1024 * 1024)).toFixed(2));
-        if (uploadedMedia.duration) fd.append('duration_seconds', uploadedMedia.duration);
+        fd.append('size_mb', (uploadedMedia.bytes / (1024 * 1024)).toFixed(2));
+        if (uploadedMedia.duration) {
+          fd.append('duration_seconds', Math.round(uploadedMedia.duration));
+        }
       } else {
         fd.append('media_url', contentForm.media_url);
       }
+      
       await premiumContentAPI.create(fd);
       toast.success('Contenido premium creado');
       setShowContent(false);
@@ -317,7 +321,7 @@ export default function CreatorDashboard() {
       setContentForm({ content_type: 'post', title: '', description: '', media_url: '' });
       load();
     } catch (err) {
-      toast.error(err.response?.data?.detail || 'Error');
+      toast.error(err.response?.data?.detail || 'Error al crear contenido');
     }
   };
 
@@ -899,7 +903,6 @@ export default function CreatorDashboard() {
         <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
           <DialogHeader><DialogTitle style={{ fontFamily: 'Space Grotesk' }}>Perfil de Creador</DialogTitle></DialogHeader>
           <form onSubmit={handleSaveProfile} className="space-y-4">
-            {/* (mismo contenido del formulario de perfil que antes) */}
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <Label>Nicho</Label>
@@ -1054,10 +1057,12 @@ export default function CreatorDashboard() {
         </DialogContent>
       </Dialog>
 
-      {/* Add Premium Content Dialog (con MediaUploader) */}
+      {/* Add Premium Content Dialog (con MediaUploader funcional) */}
       <Dialog open={showContent} onOpenChange={setShowContent}>
         <DialogContent className="max-w-xl">
-          <DialogHeader><DialogTitle style={{ fontFamily: 'Space Grotesk' }}>Nuevo Contenido Premium</DialogTitle></DialogHeader>
+          <DialogHeader>
+            <DialogTitle style={{ fontFamily: 'Space Grotesk' }}>Nuevo Contenido Premium</DialogTitle>
+          </DialogHeader>
           <form onSubmit={handleAddContent} className="space-y-4">
             <div>
               <Label>Tipo</Label>
@@ -1078,6 +1083,8 @@ export default function CreatorDashboard() {
               <Label>Descripción</Label>
               <Textarea value={contentForm.description} onChange={e => setContentForm({ ...contentForm, description: e.target.value })} />
             </div>
+            
+            {/* MediaUploader funcional */}
             <div>
               <Label>Subir archivo multimedia</Label>
               <MediaUploader
@@ -1092,9 +1099,15 @@ export default function CreatorDashboard() {
                 resourceType={contentForm.content_type === 'video' ? 'video' : 'image'}
               />
             </div>
+            
             <div>
               <Label>O pegar URL externa (opcional)</Label>
-              <Input value={contentForm.media_url} onChange={e => setContentForm({ ...contentForm, media_url: e.target.value })} placeholder="https://..." disabled={!!uploadedMedia} />
+              <Input
+                value={contentForm.media_url}
+                onChange={e => setContentForm({ ...contentForm, media_url: e.target.value })}
+                placeholder="https://..."
+                disabled={!!uploadedMedia}
+              />
             </div>
             <Button type="submit" className="w-full">Publicar</Button>
           </form>
