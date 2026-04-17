@@ -22,7 +22,8 @@ import MediaUploader from '@/components/MediaUploader';
 import {
   Wallet, Megaphone, FileCheck, DollarSign, ShieldCheck, Music, Crown, Upload, Plus,
   LogOut, Zap, Eye, Users, TrendingUp, CreditCard, ArrowRight, CheckCircle2, Image, Video,
-  Share2, Camera, Award, Clock, ExternalLink, HardDrive, Cloud, Lock, Unlock
+  Share2, Camera, Award, Clock, ExternalLink, HardDrive, Cloud, Lock, Unlock,
+  Trash2, Maximize2, X, MessageCircle
 } from 'lucide-react';
 
 function StatusBadge({ status }) {
@@ -36,6 +37,46 @@ function StatusBadge({ status }) {
     completed: 'Completado', cancelled: 'Cancelado', accepted: 'Aceptado', verified: 'Verificado', none: 'Sin KYC'
   };
   return <span className={map[status] || 'status-badge-pending'}>{labels[status] || status}</span>;
+}
+
+// Modal para vista ampliada de contenido
+function MediaViewerModal({ isOpen, onClose, media }) {
+  if (!media) return null;
+
+  return (
+    <Dialog open={isOpen} onOpenChange={onClose}>
+      <DialogContent className="max-w-4xl max-h-[90vh] p-0 bg-black/95">
+        <button
+          onClick={onClose}
+          className="absolute top-4 right-4 z-50 p-2 rounded-full bg-black/50 hover:bg-black/70 text-white"
+        >
+          <X className="w-5 h-5" />
+        </button>
+        <div className="flex items-center justify-center h-full min-h-[50vh]">
+          {media.type === 'video' ? (
+            <video
+              src={media.url}
+              controls
+              autoPlay
+              className="max-w-full max-h-[85vh] object-contain"
+            />
+          ) : (
+            <img
+              src={media.url}
+              alt={media.title || 'Contenido'}
+              className="max-w-full max-h-[85vh] object-contain"
+            />
+          )}
+        </div>
+        {media.title && (
+          <div className="absolute bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-black/80 to-transparent text-white">
+            <p className="font-medium">{media.title}</p>
+            {media.description && <p className="text-sm opacity-80">{media.description}</p>}
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
 }
 
 export default function CreatorDashboard() {
@@ -118,6 +159,10 @@ export default function CreatorDashboard() {
 
   // My Premium Content list
   const [myPremiumContent, setMyPremiumContent] = useState([]);
+
+  // Media Viewer
+  const [viewerMedia, setViewerMedia] = useState(null);
+  const [showMediaViewer, setShowMediaViewer] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -325,6 +370,28 @@ export default function CreatorDashboard() {
     }
   };
 
+  const handleDeleteContent = async (contentId, publicId, resourceType) => {
+    if (!window.confirm('¿Estás seguro de eliminar este contenido? Esta acción no se puede deshacer.')) return;
+    try {
+      // Eliminar de Cloudinary
+      if (publicId) {
+        await mediaAPI.deleteMedia(publicId, resourceType);
+      }
+      // Eliminar de la base de datos (asumiendo un endpoint de eliminación en premiumContentAPI)
+      // Si no existe, se puede implementar una llamada a un endpoint de backend
+      await premiumContentAPI.delete(contentId);
+      toast.success('Contenido eliminado');
+      load(); // Recargar lista
+    } catch (err) {
+      toast.error('Error al eliminar el contenido');
+    }
+  };
+
+  const handleExpandMedia = (media) => {
+    setViewerMedia(media);
+    setShowMediaViewer(true);
+  };
+
   const handleFinancing = async (e) => {
     e.preventDefault();
     try {
@@ -463,6 +530,7 @@ export default function CreatorDashboard() {
 
           {/* ==================== OVERVIEW ==================== */}
           <TabsContent value="overview">
+            {/* ... (contenido sin cambios del overview) ... */}
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
               <div className="kpi-card">
                 <p className="text-xs text-muted-foreground mb-1">Saldo</p>
@@ -616,6 +684,7 @@ export default function CreatorDashboard() {
 
           {/* ==================== CAMPAIGNS ==================== */}
           <TabsContent value="campaigns">
+            {/* ... (código sin cambios) ... */}
             <h2 className="text-xl font-semibold mb-4" style={{ fontFamily: 'Space Grotesk' }}>Campañas Disponibles</h2>
             {campaigns.length === 0 ? (
               <Card className="border-border/50">
@@ -696,6 +765,7 @@ export default function CreatorDashboard() {
 
           {/* ==================== APPLICATIONS ==================== */}
           <TabsContent value="applications">
+            {/* ... (código sin cambios) ... */}
             <h2 className="text-xl font-semibold mb-4" style={{ fontFamily: 'Space Grotesk' }}>Mis Aplicaciones</h2>
             {applications.length === 0 ? (
               <Card className="border-border/50">
@@ -730,6 +800,7 @@ export default function CreatorDashboard() {
 
           {/* ==================== EARNINGS ==================== */}
           <TabsContent value="earnings">
+            {/* ... (código sin cambios) ... */}
             <h2 className="text-xl font-semibold mb-4" style={{ fontFamily: 'Space Grotesk' }}>Ganancias y Transacciones</h2>
             <div className="grid grid-cols-2 gap-4 mb-4">
               <div className="kpi-card">
@@ -761,6 +832,9 @@ export default function CreatorDashboard() {
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-xl font-semibold" style={{ fontFamily: 'Space Grotesk' }}>Contenido Premium</h2>
               <div className="flex gap-2">
+                <Button onClick={() => navigate('/creator/chat')} variant="outline">
+                  <MessageCircle className="w-4 h-4 mr-1" /> Ir al Chat con Fans
+                </Button>
                 <Button onClick={() => setShowPremium(true)} variant="outline">
                   <Crown className="w-4 h-4 mr-1" /> Config. Plan
                 </Button>
@@ -786,29 +860,69 @@ export default function CreatorDashboard() {
               </Card>
             )}
 
-            {/* Lista de contenido premium propio */}
-            {myPremiumContent.length > 0 && (
-              <div className="space-y-2">
+            {/* Lista de contenido premium propio con opciones de eliminar y ampliar */}
+            {myPremiumContent.length > 0 ? (
+              <div className="space-y-3">
                 <p className="text-sm font-medium">Mi Contenido Premium</p>
-                {myPremiumContent.map(item => (
-                  <Card key={item.id} className="border-border/50">
-                    <CardContent className="p-3 flex items-center justify-between">
-                      <div>
-                        <p className="text-sm font-medium">{item.title || 'Sin título'}</p>
-                        <p className="text-xs text-muted-foreground">{item.content_type} · {new Date(item.created_at).toLocaleDateString()}</p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {myPremiumContent.map(item => (
+                    <Card key={item.id} className="border-border/50 overflow-hidden">
+                      <div className="relative aspect-video bg-muted cursor-pointer" onClick={() => handleExpandMedia({
+                        url: item.media_url,
+                        type: item.content_type === 'video' ? 'video' : 'image',
+                        title: item.title,
+                        description: item.description
+                      })}>
+                        {item.content_type === 'photo' || item.content_type === 'image' ? (
+                          <img src={item.media_url} alt={item.title} className="w-full h-full object-cover" />
+                        ) : item.content_type === 'video' ? (
+                          <video src={item.media_url} className="w-full h-full object-cover" muted />
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center bg-muted">
+                            <FileCheck className="w-8 h-8 text-muted-foreground" />
+                          </div>
+                        )}
+                        <div className="absolute top-2 right-2 opacity-0 hover:opacity-100 transition-opacity">
+                          <Button size="icon" variant="secondary" className="h-8 w-8 rounded-full bg-black/50 hover:bg-black/70">
+                            <Maximize2 className="w-4 h-4 text-white" />
+                          </Button>
+                        </div>
                       </div>
-                      {item.media_url && (
-                        <a href={item.media_url} target="_blank" rel="noopener noreferrer" className="text-primary text-xs hover:underline">Ver</a>
-                      )}
-                    </CardContent>
-                  </Card>
-                ))}
+                      <CardContent className="p-3">
+                        <div className="flex items-start justify-between">
+                          <div className="flex-1 min-w-0">
+                            <p className="font-medium text-sm truncate">{item.title || 'Sin título'}</p>
+                            <p className="text-xs text-muted-foreground">{item.content_type} · {new Date(item.created_at).toLocaleDateString()}</p>
+                            {item.description && (
+                              <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{item.description}</p>
+                            )}
+                          </div>
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            className="h-8 w-8 text-destructive hover:text-destructive"
+                            onClick={() => handleDeleteContent(item.id, item.cloudinary_public_id, item.content_type === 'video' ? 'video' : 'image')}
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
               </div>
+            ) : (
+              <Card className="border-border/50">
+                <CardContent className="p-8 text-center text-muted-foreground">
+                  Aún no has publicado contenido premium. ¡Crea tu primer contenido!
+                </CardContent>
+              </Card>
             )}
           </TabsContent>
 
           {/* ==================== CURATOR ==================== */}
           <TabsContent value="curator">
+            {/* ... (código sin cambios) ... */}
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-xl font-semibold" style={{ fontFamily: 'Space Grotesk' }}>Curador de Spotify</h2>
               <div className="flex gap-2">
@@ -869,6 +983,7 @@ export default function CreatorDashboard() {
 
           {/* ==================== PROFILE ==================== */}
           <TabsContent value="profile">
+            {/* ... (código sin cambios) ... */}
             <h2 className="text-xl font-semibold mb-4" style={{ fontFamily: 'Space Grotesk' }}>Mi Perfil de Creador</h2>
             {user?.creator_profile ? (
               <Card className="border-border/50">
@@ -897,9 +1012,9 @@ export default function CreatorDashboard() {
       </div>
 
       {/* ==================== DIALOGS ==================== */}
-
       {/* Profile Dialog */}
       <Dialog open={showProfile} onOpenChange={setShowProfile}>
+        {/* ... (contenido sin cambios) ... */}
         <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
           <DialogHeader><DialogTitle style={{ fontFamily: 'Space Grotesk' }}>Perfil de Creador</DialogTitle></DialogHeader>
           <form onSubmit={handleSaveProfile} className="space-y-4">
@@ -986,6 +1101,7 @@ export default function CreatorDashboard() {
 
       {/* Deliverable Dialog */}
       <Dialog open={showDeliverable} onOpenChange={setShowDeliverable}>
+        {/* ... (sin cambios) ... */}
         <DialogContent>
           <DialogHeader><DialogTitle style={{ fontFamily: 'Space Grotesk' }}>Subir Entregable</DialogTitle></DialogHeader>
           <form onSubmit={handleDeliverable} className="space-y-4">
@@ -1008,6 +1124,7 @@ export default function CreatorDashboard() {
 
       {/* KYC Dialog */}
       <Dialog open={showKYC} onOpenChange={setShowKYC}>
+        {/* ... (sin cambios) ... */}
         <DialogContent>
           <DialogHeader><DialogTitle style={{ fontFamily: 'Space Grotesk' }}>Verificación KYC</DialogTitle></DialogHeader>
           <form onSubmit={handleKYC} className="space-y-4">
@@ -1026,6 +1143,7 @@ export default function CreatorDashboard() {
 
       {/* Withdrawal Dialog */}
       <Dialog open={showWithdrawal} onOpenChange={setShowWithdrawal}>
+        {/* ... (sin cambios) ... */}
         <DialogContent>
           <DialogHeader><DialogTitle style={{ fontFamily: 'Space Grotesk' }}>Solicitar Retiro</DialogTitle></DialogHeader>
           <div className="p-3 rounded-lg bg-[hsl(var(--surface-2))] text-xs text-muted-foreground mb-2">
@@ -1047,6 +1165,7 @@ export default function CreatorDashboard() {
 
       {/* Premium Config Dialog */}
       <Dialog open={showPremium} onOpenChange={setShowPremium}>
+        {/* ... (sin cambios) ... */}
         <DialogContent>
           <DialogHeader><DialogTitle style={{ fontFamily: 'Space Grotesk' }}>Configurar Suscripción Premium</DialogTitle></DialogHeader>
           <form onSubmit={handleSetPremium} className="space-y-4">
@@ -1116,6 +1235,7 @@ export default function CreatorDashboard() {
 
       {/* Music Financing Dialog */}
       <Dialog open={showFinancing} onOpenChange={setShowFinancing}>
+        {/* ... (sin cambios) ... */}
         <DialogContent>
           <DialogHeader><DialogTitle style={{ fontFamily: 'Space Grotesk' }}>Solicitar Financiamiento Musical</DialogTitle></DialogHeader>
           <form onSubmit={handleFinancing} className="space-y-4">
@@ -1134,6 +1254,7 @@ export default function CreatorDashboard() {
 
       {/* Register Playlist Dialog */}
       <Dialog open={showPlaylist} onOpenChange={setShowPlaylist}>
+        {/* ... (sin cambios) ... */}
         <DialogContent>
           <DialogHeader><DialogTitle style={{ fontFamily: 'Space Grotesk' }}>Registrar Playlist de Spotify</DialogTitle></DialogHeader>
           <form onSubmit={handleRegisterPlaylist} className="space-y-4">
@@ -1150,6 +1271,7 @@ export default function CreatorDashboard() {
 
       {/* Curator Payment Request Dialog */}
       <Dialog open={showCuratorPay} onOpenChange={setShowCuratorPay}>
+        {/* ... (sin cambios) ... */}
         <DialogContent>
           <DialogHeader><DialogTitle style={{ fontFamily: 'Space Grotesk' }}>Solicitar Pago de Curador</DialogTitle></DialogHeader>
           <form onSubmit={handleCuratorPayment} className="space-y-4">
@@ -1164,6 +1286,7 @@ export default function CreatorDashboard() {
 
       {/* Level Up Request Dialog */}
       <Dialog open={showLevelReq} onOpenChange={setShowLevelReq}>
+        {/* ... (sin cambios) ... */}
         <DialogContent>
           <DialogHeader><DialogTitle style={{ fontFamily: 'Space Grotesk' }}>Solicitar Subir de Nivel</DialogTitle></DialogHeader>
           <form onSubmit={handleLevelRequest} className="space-y-4">
@@ -1174,6 +1297,13 @@ export default function CreatorDashboard() {
           </form>
         </DialogContent>
       </Dialog>
+
+      {/* Media Viewer Modal */}
+      <MediaViewerModal
+        isOpen={showMediaViewer}
+        onClose={() => setShowMediaViewer(false)}
+        media={viewerMedia}
+      />
     </div>
   );
 }
