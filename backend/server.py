@@ -11,7 +11,7 @@ from typing import List, Optional
 from datetime import datetime, timezone, timedelta
 from bson import ObjectId
 
-# --- Cloudinary imports (añadidos) ---
+# --- Cloudinary imports ---
 import cloudinary
 import cloudinary.uploader
 import cloudinary.api
@@ -21,6 +21,12 @@ import cloudinary.utils
 from auth import (
     hash_password, verify_password, create_token,
     get_current_user, require_admin, require_advertiser, require_creator
+)
+
+# --- Modelos de Chat ---
+from chat import (
+    ChatMessageCreate, ChatMessageResponse, ChatConversation,
+    MessageType, PaymentRequest
 )
 
 # ==================== CONFIGURACIÓN INICIAL ====================
@@ -108,6 +114,11 @@ async def startup():
             "updated_at": now_iso(),
         })
         logger.info("Platform settings seeded")
+    
+    # Crear índices para chat
+    await db.chat_messages.create_index([("sender_id", 1), ("created_at", -1)])
+    await db.chat_messages.create_index([("recipient_id", 1), ("created_at", -1)])
+    await db.chat_messages.create_index([("sender_id", 1), ("recipient_id", 1)])
     
     await db.users.create_index("email", unique=True)
     await db.users.create_index("referral_code")
@@ -1895,7 +1906,7 @@ async def admin_set_level(user_id: str, level: str = Form(...), user=Depends(req
     )
     return {"message": f"Nivel actualizado a {level}"}
 
-# ==================== CLOUDINARY SIGN UPLOAD (AGREGADO DIRECTAMENTE) ====================
+# ==================== CLOUDINARY SIGN UPLOAD ====================
 @api.post("/cloudinary/sign-upload")
 async def sign_upload(current_user=Depends(get_current_user)):
     """Genera firma para subir archivos directamente a Cloudinary desde el frontend"""
@@ -1922,7 +1933,7 @@ async def sign_upload(current_user=Depends(get_current_user)):
         logger.error(f"Error generando firma Cloudinary: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error al generar firma: {str(e)}")
 
-# ==================== CLOUDINARY WEBHOOK (opcional) ====================
+# ==================== CLOUDINARY WEBHOOK ====================
 @api.post("/cloudinary/webhook")
 async def cloudinary_webhook(request: Request):
     """Webhook para notificaciones de Cloudinary"""
@@ -1941,7 +1952,7 @@ async def cloudinary_webhook(request: Request):
         logger.error(f"Error en webhook Cloudinary: {str(e)}")
         return {"status": "error", "message": str(e)}
 
-# ==================== CLOUDINARY USAGE (admin) ====================
+# ==================== CLOUDINARY USAGE ====================
 @api.get("/cloudinary/usage")
 async def get_cloudinary_usage(current_user=Depends(require_admin)):
     """Obtiene estadísticas de uso de Cloudinary"""
@@ -2082,6 +2093,291 @@ async def delete_media(
         return {"success": True, "result": result.get("result")}
     except Exception as e:
         raise HTTPException(500, f"Error al eliminar recurso: {str(e)}")
+
+# ==================== CHAT ENDPOINTS ====================
+@api.post("/chat/messages", response_model=ChatMessageResponse)
+async def send_chat_message(
+    message: ChatMessageCreate,
+    current_user: dict = Depends(get_current_user)
+):
+    """Envía un mensaje de chat a otro usuario"""
+    sender_id = current_user["sub"]
+    recipient_id = message.recipient_id
+    
+    # Validar que el destinatario existe
+    recipient = await db.users.find_one({"_id": ObjectId(recipient_id)})
+    if not recipient:
+        raise HTTPException(404, "Destinatario no encontrado")
+    
+    # Si es contenido de pago, validar precio
+    if message.is_paid:
+        if not message.price or message.price <= 0:
+            raise HTTPException(400, "Precio requerido para contenido de pago")
+    
+    # Crear mensaje
+    chat_message = {
+        "sender_id": sender_id,
+        "recipient_id": recipient_id,
+        "type": message.type,
+        "content": message.content,
+        "is_paid": message.is_paid,
+        "price": message.price,
+        "is_blurred": message.is_paid,  # Inicialmente blurred si es de pago
+        "duration": message.duration,
+        "cloudinary_public_id": message.cloudinary_public_id,
+        "created_at": datetime.now(timezone.utc),
+        "read_at": None,
+        "paid_by": []  # Lista de usuarios que han pagado por este contenido
+    }
+    
+    result = await db.chat_messages.insert_one(chat_message)
+    chat_message["_id"] = result.inserted_id
+    
+    # Obtener nombre del sender para respuesta
+    sender = await db.users.find_one({"_id": ObjectId(sender_id)})
+    
+    response = ChatMessageResponse(
+        id=str(result.inserted_id),
+        sender_id=sender_id,
+        sender_name=sender.get("name", ""),
+        recipient_id=recipient_id,
+        type=message.type,
+        content=message.content,
+        is_paid=message.is_paid,
+        price=message.price,
+        is_blurred=message.is_paid,
+        duration=message.duration,
+        cloudinary_public_id=message.cloudinary_public_id,
+        created_at=chat_message["created_at"],
+        read_at=None
+    )
+    return response
+
+@api.get("/chat/conversations", response_model=List[ChatConversation])
+async def get_conversations(current_user: dict = Depends(get_current_user)):
+    """Obtiene todas las conversaciones del usuario actual"""
+    user_id = current_user["sub"]
+    
+    # Pipeline de agregación para obtener la última conversación con cada usuario
+    pipeline = [
+        {
+            "$match": {
+                "$or": [
+                    {"sender_id": user_id},
+                    {"recipient_id": user_id}
+                ]
+            }
+        },
+        {
+            "$sort": {"created_at": -1}
+        },
+        {
+            "$group": {
+                "_id": {
+                    "$cond": [
+                        {"$eq": ["$sender_id", user_id]},
+                        "$recipient_id",
+                        "$sender_id"
+                    ]
+                },
+                "last_message": {"$first": "$content"},
+                "last_message_at": {"$first": "$created_at"},
+                "last_message_type": {"$first": "$type"},
+                "unread_count": {
+                    "$sum": {
+                        "$cond": [
+                            {
+                                "$and": [
+                                    {"$eq": ["$recipient_id", user_id]},
+                                    {"$eq": ["$read_at", None]}
+                                ]
+                            },
+                            1,
+                            0
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "$lookup": {
+                "from": "users",
+                "localField": "_id",
+                "foreignField": "_id",
+                "as": "user_info"
+            }
+        },
+        {
+            "$unwind": {
+                "path": "$user_info",
+                "preserveNullAndEmptyArrays": True
+            }
+        },
+        {
+            "$project": {
+                "other_user_id": {"$toString": "$_id"},
+                "other_user_name": {"$ifNull": ["$user_info.name", "Usuario"]},
+                "other_user_photo": {"$ifNull": ["$user_info.profile_photo_url", ""]},
+                "last_message": 1,
+                "last_message_at": 1,
+                "unread_count": 1
+            }
+        },
+        {
+            "$sort": {"last_message_at": -1}
+        }
+    ]
+    
+    conversations = await db.chat_messages.aggregate(pipeline).to_list(None)
+    return [ChatConversation(**conv) for conv in conversations]
+
+@api.get("/chat/messages/{other_user_id}", response_model=List[ChatMessageResponse])
+async def get_chat_messages(
+    other_user_id: str,
+    limit: int = Query(50, ge=1, le=100),
+    before: Optional[str] = Query(None),
+    current_user: dict = Depends(get_current_user)
+):
+    """Obtiene los mensajes entre el usuario actual y otro usuario"""
+    user_id = current_user["sub"]
+    
+    query = {
+        "$or": [
+            {"sender_id": user_id, "recipient_id": other_user_id},
+            {"sender_id": other_user_id, "recipient_id": user_id}
+        ]
+    }
+    
+    if before:
+        query["created_at"] = {"$lt": datetime.fromisoformat(before)}
+    
+    messages_cursor = db.chat_messages.find(query).sort("created_at", -1).limit(limit)
+    messages = await messages_cursor.to_list(length=limit)
+    messages.reverse()  # Orden cronológico
+    
+    # Marcar mensajes recibidos como leídos
+    await db.chat_messages.update_many(
+        {"recipient_id": user_id, "sender_id": other_user_id, "read_at": None},
+        {"$set": {"read_at": datetime.now(timezone.utc)}}
+    )
+    
+    # Obtener nombres de usuarios
+    sender_ids = list(set([m["sender_id"] for m in messages]))
+    users = await db.users.find({"_id": {"$in": [ObjectId(uid) for uid in sender_ids]}}).to_list(None)
+    user_names = {str(u["_id"]): u.get("name", "") for u in users}
+    
+    result = []
+    for msg in messages:
+        is_paid_by_me = user_id in msg.get("paid_by", [])
+        result.append(ChatMessageResponse(
+            id=str(msg["_id"]),
+            sender_id=msg["sender_id"],
+            sender_name=user_names.get(msg["sender_id"], ""),
+            recipient_id=msg["recipient_id"],
+            type=msg["type"],
+            content=msg["content"],
+            is_paid=msg["is_paid"],
+            price=msg.get("price"),
+            is_blurred=msg["is_paid"] and not is_paid_by_me,
+            duration=msg.get("duration"),
+            cloudinary_public_id=msg.get("cloudinary_public_id"),
+            created_at=msg["created_at"],
+            read_at=msg.get("read_at")
+        ))
+    return result
+
+@api.put("/chat/messages/{message_id}/read")
+async def mark_message_read(
+    message_id: str,
+    current_user: dict = Depends(get_current_user)
+):
+    """Marca un mensaje como leído"""
+    result = await db.chat_messages.update_one(
+        {"_id": ObjectId(message_id), "recipient_id": current_user["sub"]},
+        {"$set": {"read_at": datetime.now(timezone.utc)}}
+    )
+    if result.modified_count == 0:
+        raise HTTPException(404, "Mensaje no encontrado o ya leído")
+    return {"status": "ok"}
+
+@api.post("/chat/pay")
+async def pay_for_chat_content(
+    payment: PaymentRequest,
+    current_user: dict = Depends(get_current_user)
+):
+    """Paga para desbloquear contenido de pago en chat"""
+    message = await db.chat_messages.find_one({"_id": ObjectId(payment.message_id)})
+    if not message:
+        raise HTTPException(404, "Mensaje no encontrado")
+    
+    if not message.get("is_paid"):
+        raise HTTPException(400, "Este mensaje no es de pago")
+    
+    user_id = current_user["sub"]
+    if user_id in message.get("paid_by", []):
+        raise HTTPException(400, "Ya has pagado por este contenido")
+    
+    price = message["price"]
+    sender_id = message["sender_id"]
+    
+    # Verificar saldo del fan
+    fan = await db.users.find_one({"_id": ObjectId(user_id)})
+    if fan["balance"] < price:
+        raise HTTPException(400, f"Saldo insuficiente. Necesitas ${price}")
+    
+    # Descontar saldo del fan
+    await db.users.update_one(
+        {"_id": ObjectId(user_id)},
+        {"$inc": {"balance": -price}}
+    )
+    
+    # Calcular comisión (35% si es Top10, 25% normal)
+    creator = await db.users.find_one({"_id": ObjectId(sender_id)})
+    commission_rate = 0.35 if creator.get("is_top10") else 0.25
+    commission = round(price * commission_rate, 2)
+    creator_payout = round(price - commission, 2)
+    
+    # Acreditar al creador
+    await db.users.update_one(
+        {"_id": ObjectId(sender_id)},
+        {"$inc": {"balance": creator_payout}}
+    )
+    
+    # Registrar transacciones
+    await db.transactions.insert_one({
+        "user_id": user_id,
+        "type": "chat_payment",
+        "amount": -price,
+        "reference_id": str(message["_id"]),
+        "description": f"Pago por contenido en chat de {creator.get('name', 'creador')}",
+        "created_at": now_iso()
+    })
+    
+    await db.transactions.insert_one({
+        "user_id": sender_id,
+        "type": "chat_income",
+        "amount": creator_payout,
+        "reference_id": str(message["_id"]),
+        "description": f"Ingreso por contenido en chat",
+        "created_at": now_iso()
+    })
+    
+    await db.transactions.insert_one({
+        "user_id": "__platform__",
+        "type": "platform_commission",
+        "amount": commission,
+        "reference_id": str(message["_id"]),
+        "description": f"Comisión chat {int(commission_rate*100)}%",
+        "created_at": now_iso()
+    })
+    
+    # Marcar como pagado por este usuario
+    await db.chat_messages.update_one(
+        {"_id": ObjectId(payment.message_id)},
+        {"$addToSet": {"paid_by": user_id}}
+    )
+    
+    return {"message": "Contenido desbloqueado", "price": price}
 
 # ==================== STATIC FILES & MIDDLEWARE ====================
 app.mount("/api/uploads", StaticFiles(directory=str(UPLOAD_DIR)), name="uploads")
