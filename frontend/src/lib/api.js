@@ -135,13 +135,15 @@ export const premiumContentAPI = {
 export const mediaAPI = {
   // Solicitar firma para subir directamente a Cloudinary
   signUpload: (params) => api.post('/cloudinary/sign-upload', params),
-  // Subir video (a través del backend)
-  uploadVideo: (formData) => api.post('/media/upload/video', formData, {
+  // Subir video (a través del backend) - Soporta onUploadProgress
+  uploadVideo: (formData, options = {}) => api.post('/media/upload/video', formData, {
     headers: { 'Content-Type': 'multipart/form-data' },
+    ...options,
   }),
-  // Subir imagen (a través del backend)
-  uploadImage: (formData) => api.post('/media/upload/image', formData, {
+  // Subir imagen (a través del backend) - Soporta onUploadProgress
+  uploadImage: (formData, options = {}) => api.post('/media/upload/image', formData, {
     headers: { 'Content-Type': 'multipart/form-data' },
+    ...options,
   }),
   // Obtener URL firmada para un recurso
   getSignedUrl: (publicId, resourceType = 'video', expiresIn = 3600) =>
