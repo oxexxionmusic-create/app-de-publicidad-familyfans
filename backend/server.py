@@ -1184,6 +1184,39 @@ async def get_premium_content(creator_id: str, user=Depends(get_current_user)):
     }).sort("created_at", -1).to_list(500)
     return [serialize_doc(c) for c in content]
 
+@api.delete("/premium-content/{content_id}")
+async def delete_premium_content(content_id: str, user=Depends(get_current_user)):
+    """Elimina un contenido premium (solo el creador propietario o admin)"""
+    content = await db.premium_content.find_one({"_id": ObjectId(content_id)})
+    if not content:
+        raise HTTPException(404, "Contenido no encontrado")
+    
+    # Verificar permisos
+    if content["creator_id"] != user["sub"] and user["role"] != "admin":
+        raise HTTPException(403, "No autorizado para eliminar este contenido")
+    
+    # Eliminar de Cloudinary si tiene public_id
+    public_id = content.get("cloudinary_public_id")
+    if public_id:
+        try:
+            resource_type = "video" if content.get("content_type") == "video" else "image"
+            cloudinary.uploader.destroy(public_id, resource_type=resource_type)
+        except Exception as e:
+            logger.error(f"Error eliminando de Cloudinary: {e}")
+    
+    # Eliminar de la base de datos
+    await db.premium_content.delete_one({"_id": ObjectId(content_id)})
+    
+    # Actualizar almacenamiento del creador
+    size_mb = content.get("size_mb", 0)
+    if size_mb > 0:
+        await db.creator_storage.update_one(
+            {"creator_id": content["creator_id"]},
+            {"$inc": {"used_mb": -size_mb}}
+        )
+    
+    return {"message": "Contenido eliminado exitosamente"}
+
 # ==================== MUSIC FINANCING ====================
 @api.post("/music-financing")
 async def request_music_financing(
