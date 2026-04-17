@@ -5,7 +5,8 @@ import { Routes, Route, Link, useLocation, useNavigate } from 'react-router-dom'
 import {
   adminAPI, depositsAPI, kycAPI, deliverablesAPI, withdrawalsAPI, transactionsAPI,
   musicFinancingAPI, campaignsAPI, curatorAPI, microTasksAPI, levelRequestsAPI,
-  adminWalletAPI, rankingBoardsAPI, deliverableActionsAPI, adminLevelAPI
+  adminWalletAPI, rankingBoardsAPI, deliverableActionsAPI, adminLevelAPI,
+  mediaAPI, storageAPI, chatAPI
 } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -22,7 +23,7 @@ import {
   LayoutDashboard, Users, DollarSign, Megaphone, FileCheck, CreditCard, ShieldCheck,
   Music, Settings, List, CheckCircle2, XCircle, Clock, LogOut, Zap, ChevronRight,
   Eye, TrendingUp, AlertCircle, RefreshCw, ExternalLink, Search, Video, Image,
-  HardDrive, Cloud, MessageCircle, Trash2, Play, Pause
+  HardDrive, Cloud, MessageCircle, Trash2, Play, Pause, Loader2
 } from 'lucide-react';
 
 function StatusBadge({ status }) {
@@ -332,7 +333,6 @@ function AdminList({ title, fetchFn, approveFn, rejectFn, columns, type }) {
   );
 }
 
-// Componente para Campañas con búsqueda por ID
 function CampaignsList() {
   const [campaigns, setCampaigns] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -449,7 +449,6 @@ function CampaignsList() {
   );
 }
 
-// Componente para Entregables con búsqueda por ID de Campaña
 function DeliverablesList() {
   const [deliverables, setDeliverables] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -566,54 +565,537 @@ function DeliverablesList() {
   );
 }
 
-// ==================== NUEVOS COMPONENTES (Placeholders seguros) ====================
+// ==================== NUEVAS SECCIONES IMPLEMENTADAS ====================
 
 function AdminMedia() {
+  const [mediaItems, setMediaItems] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [selectedType, setSelectedType] = useState('all');
+
+  const loadMedia = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await mediaAPI.listAll();
+      setMediaItems(res.data || []);
+    } catch (error) {
+      console.error('Error loading media:', error);
+      toast.error('Error al cargar medios');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadMedia();
+  }, [loadMedia]);
+
+  const handleDelete = async (publicId, resourceType) => {
+    if (!window.confirm('¿Eliminar este recurso permanentemente?')) return;
+    try {
+      await mediaAPI.deleteMedia(publicId, resourceType);
+      toast.success('Recurso eliminado');
+      loadMedia();
+    } catch (error) {
+      toast.error('Error al eliminar');
+    }
+  };
+
+  const filteredMedia = mediaItems.filter(item => {
+    const matchesSearch = (
+      item.public_id?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      item.creator_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      item.creator_email?.toLowerCase().includes(searchTerm.toLowerCase())
+    );
+    const matchesType = selectedType === 'all' || item.type === selectedType;
+    return matchesSearch && matchesType;
+  });
+
   return (
     <div className="space-y-4">
-      <h2 className="text-xl font-semibold" style={{ fontFamily: 'Space Grotesk' }}>Gestión de Medios (Cloudinary)</h2>
-      <Card className="border-border/50">
-        <CardContent className="p-8 text-center text-muted-foreground">
-          <Cloud className="w-12 h-12 mx-auto mb-4 opacity-50" />
-          <p>Funcionalidad en desarrollo.</p>
-          <p className="text-sm mt-2">Próximamente podrás gestionar todos los archivos multimedia desde aquí.</p>
-        </CardContent>
-      </Card>
+      <div className="flex items-center justify-between">
+        <h2 className="text-xl font-semibold" style={{ fontFamily: 'Space Grotesk' }}>Gestión de Medios (Cloudinary)</h2>
+        <Button variant="outline" size="sm" onClick={loadMedia}>
+          <RefreshCw className="w-4 h-4 mr-1" /> Actualizar
+        </Button>
+      </div>
+
+      <div className="flex gap-3 mb-4">
+        <div className="relative flex-1">
+          <Search className="absolute left-3 top-3 w-4 h-4 text-muted-foreground" />
+          <Input
+            placeholder="Buscar por ID, creador o email..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="pl-10"
+          />
+        </div>
+        <Select value={selectedType} onValueChange={setSelectedType}>
+          <SelectTrigger className="w-40">
+            <SelectValue placeholder="Tipo" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Todos</SelectItem>
+            <SelectItem value="image">Imágenes</SelectItem>
+            <SelectItem value="video">Videos</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+
+      {loading ? (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {[1, 2, 3, 4, 5, 6].map(i => (
+            <Card key={i} className="border-border/50">
+              <CardContent className="p-4">
+                <div className="h-40 bg-muted animate-pulse rounded mb-3" />
+                <div className="h-4 w-3/4 bg-muted animate-pulse rounded mb-2" />
+                <div className="h-3 w-1/2 bg-muted animate-pulse rounded" />
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      ) : filteredMedia.length === 0 ? (
+        <Card className="border-border/50">
+          <CardContent className="p-12 text-center">
+            <Cloud className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
+            <p className="text-muted-foreground">No se encontraron archivos multimedia</p>
+          </CardContent>
+        </Card>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {filteredMedia.map(item => (
+            <Card key={item.id} className="border-border/50 overflow-hidden">
+              <div className="aspect-video bg-muted relative">
+                {item.type === 'image' ? (
+                  <img
+                    src={item.thumbnail_url || item.url}
+                    alt={item.public_id}
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  <video
+                    src={item.preview_url || item.url}
+                    className="w-full h-full object-cover"
+                    controls
+                  />
+                )}
+                <span className={`absolute top-2 right-2 text-xs px-2 py-1 rounded ${
+                  item.type === 'image' ? 'bg-blue-500/80' : 'bg-purple-500/80'
+                } text-white`}>
+                  {item.type === 'image' ? <Image className="w-3 h-3 inline mr-1" /> : <Video className="w-3 h-3 inline mr-1" />}
+                  {item.type}
+                </span>
+              </div>
+              <CardContent className="p-4">
+                <p className="font-mono text-xs truncate mb-1" title={item.public_id}>
+                  {item.public_id}
+                </p>
+                <div className="flex items-center justify-between text-xs text-muted-foreground mb-2">
+                  <span>{item.creator_name || 'Desconocido'}</span>
+                  <span>{item.size_mb?.toFixed(2)} MB</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="flex-1"
+                    onClick={() => window.open(item.url, '_blank')}
+                  >
+                    <Eye className="w-3 h-3 mr-1" /> Ver
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="destructive"
+                    onClick={() => handleDelete(item.public_id, item.type)}
+                  >
+                    <Trash2 className="w-3 h-3" />
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
 
 function AdminStorage() {
+  const [storageData, setStorageData] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [editingLimit, setEditingLimit] = useState(null);
+  const [newLimit, setNewLimit] = useState('');
+
+  const loadStorage = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await storageAPI.getAllUsage();
+      setStorageData(res.data || []);
+    } catch (error) {
+      console.error('Error loading storage:', error);
+      toast.error('Error al cargar datos de almacenamiento');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadStorage();
+  }, [loadStorage]);
+
+  const handleSetLimit = async (creatorId) => {
+    if (!newLimit || isNaN(newLimit) || parseFloat(newLimit) < 0) {
+      toast.error('Ingresa un límite válido');
+      return;
+    }
+    try {
+      await storageAPI.setLimit(creatorId, { limit_mb: parseFloat(newLimit) });
+      toast.success('Límite actualizado');
+      setEditingLimit(null);
+      setNewLimit('');
+      loadStorage();
+    } catch (error) {
+      toast.error('Error al actualizar límite');
+    }
+  };
+
+  const filteredData = storageData.filter(item =>
+    item.creator_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    item.creator_email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    item.creator_id?.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
+  const totalUsed = storageData.reduce((sum, item) => sum + (item.used_mb || 0), 0);
+  const totalLimit = storageData.reduce((sum, item) => sum + (item.limit_mb || 0), 0);
+
   return (
     <div className="space-y-4">
-      <h2 className="text-xl font-semibold" style={{ fontFamily: 'Space Grotesk' }}>Almacenamiento de Creadores</h2>
-      <Card className="border-border/50">
-        <CardContent className="p-8 text-center text-muted-foreground">
-          <HardDrive className="w-12 h-12 mx-auto mb-4 opacity-50" />
-          <p>Funcionalidad en desarrollo.</p>
-          <p className="text-sm mt-2">Próximamente podrás monitorear y ajustar el almacenamiento de los creadores.</p>
-        </CardContent>
-      </Card>
+      <div className="flex items-center justify-between">
+        <h2 className="text-xl font-semibold" style={{ fontFamily: 'Space Grotesk' }}>Almacenamiento de Creadores</h2>
+        <Button variant="outline" size="sm" onClick={loadStorage}>
+          <RefreshCw className="w-4 h-4 mr-1" /> Actualizar
+        </Button>
+      </div>
+
+      {/* Resumen general */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+        <Card>
+          <CardContent className="p-4">
+            <p className="text-xs text-muted-foreground mb-1">Total Usado</p>
+            <p className="text-2xl font-semibold tabular-nums" style={{ fontFamily: 'Space Grotesk' }}>
+              {totalUsed.toFixed(0)} MB
+            </p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4">
+            <p className="text-xs text-muted-foreground mb-1">Límite Total Asignado</p>
+            <p className="text-2xl font-semibold tabular-nums" style={{ fontFamily: 'Space Grotesk' }}>
+              {totalLimit.toFixed(0)} MB
+            </p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4">
+            <p className="text-xs text-muted-foreground mb-1">Porcentaje de Uso Global</p>
+            <p className="text-2xl font-semibold tabular-nums" style={{ fontFamily: 'Space Grotesk' }}>
+              {totalLimit > 0 ? ((totalUsed / totalLimit) * 100).toFixed(1) : 0}%
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+
+      <div className="relative mb-4">
+        <Search className="absolute left-3 top-3 w-4 h-4 text-muted-foreground" />
+        <Input
+          placeholder="Buscar por nombre, email o ID..."
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+          className="pl-10"
+        />
+      </div>
+
+      {loading ? (
+        <div className="space-y-3">
+          {[1, 2, 3, 4].map(i => (
+            <Card key={i} className="border-border/50">
+              <CardContent className="p-4">
+                <div className="h-16 bg-muted animate-pulse rounded" />
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      ) : filteredData.length === 0 ? (
+        <Card className="border-border/50">
+          <CardContent className="p-12 text-center">
+            <HardDrive className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
+            <p className="text-muted-foreground">No hay datos de almacenamiento</p>
+          </CardContent>
+        </Card>
+      ) : (
+        <div className="space-y-3">
+          {filteredData.map(item => (
+            <Card key={item.creator_id} className="border-border/50">
+              <CardContent className="p-4">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2 mb-1">
+                      <p className="font-medium">{item.creator_name || 'Creador sin nombre'}</p>
+                      <span className="text-xs text-muted-foreground">{item.creator_email}</span>
+                    </div>
+                    <p className="text-xs text-muted-foreground mb-2 font-mono">ID: {item.creator_id}</p>
+                    <div className="space-y-1">
+                      <div className="flex justify-between text-xs">
+                        <span>Usado: {item.used_mb?.toFixed(2)} MB</span>
+                        <span>Límite: {item.limit_mb?.toFixed(0)} MB</span>
+                        <span>Suscriptores: {item.subscriber_count || 0}</span>
+                      </div>
+                      <Progress value={item.usage_percent || 0} className="h-2" />
+                      <p className="text-xs text-muted-foreground">
+                        Disponible: {item.available_mb?.toFixed(2)} MB ({item.usage_percent || 0}% usado)
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex flex-col items-end gap-2">
+                    {editingLimit === item.creator_id ? (
+                      <div className="flex items-center gap-2">
+                        <Input
+                          type="number"
+                          min="0"
+                          step="100"
+                          value={newLimit}
+                          onChange={(e) => setNewLimit(e.target.value)}
+                          placeholder="MB"
+                          className="w-24 h-8 text-sm"
+                        />
+                        <Button size="sm" onClick={() => handleSetLimit(item.creator_id)}>
+                          Guardar
+                        </Button>
+                        <Button size="sm" variant="ghost" onClick={() => setEditingLimit(null)}>
+                          Cancelar
+                        </Button>
+                      </div>
+                    ) : (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => {
+                          setEditingLimit(item.creator_id);
+                          setNewLimit(item.limit_mb?.toString() || '600');
+                        }}
+                      >
+                        Ajustar Límite
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
 
 function AdminChat() {
+  const [conversations, setConversations] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [selectedConversation, setSelectedConversation] = useState(null);
+  const [messages, setMessages] = useState([]);
+  const [messagesLoading, setMessagesLoading] = useState(false);
+
+  const loadConversations = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await chatAPI.getAllConversations();
+      setConversations(res.data || []);
+    } catch (error) {
+      console.error('Error loading conversations:', error);
+      toast.error('Error al cargar conversaciones');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadConversations();
+  }, [loadConversations]);
+
+  const loadMessages = async (conversationId) => {
+    setMessagesLoading(true);
+    try {
+      const res = await chatAPI.getMessages(conversationId);
+      setMessages(res.data || []);
+    } catch (error) {
+      toast.error('Error al cargar mensajes');
+    } finally {
+      setMessagesLoading(false);
+    }
+  };
+
+  const handleSelectConversation = (conv) => {
+    setSelectedConversation(conv);
+    loadMessages(conv.other_user_id);
+  };
+
+  const filteredConversations = conversations.filter(conv =>
+    conv.other_user_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    conv.other_user_email?.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
   return (
     <div className="space-y-4">
-      <h2 className="text-xl font-semibold" style={{ fontFamily: 'Space Grotesk' }}>Monitoreo de Chat</h2>
-      <Card className="border-border/50">
-        <CardContent className="p-8 text-center text-muted-foreground">
-          <MessageCircle className="w-12 h-12 mx-auto mb-4 opacity-50" />
-          <p>Funcionalidad en desarrollo.</p>
-          <p className="text-sm mt-2">Próximamente podrás supervisar las conversaciones entre usuarios.</p>
-        </CardContent>
-      </Card>
+      <div className="flex items-center justify-between">
+        <h2 className="text-xl font-semibold" style={{ fontFamily: 'Space Grotesk' }}>Monitoreo de Chat</h2>
+        <Button variant="outline" size="sm" onClick={loadConversations}>
+          <RefreshCw className="w-4 h-4 mr-1" /> Actualizar
+        </Button>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 h-[600px]">
+        {/* Lista de conversaciones */}
+        <Card className="border-border/50 lg:col-span-1 flex flex-col">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base">Conversaciones</CardTitle>
+            <div className="relative mt-2">
+              <Search className="absolute left-3 top-3 w-4 h-4 text-muted-foreground" />
+              <Input
+                placeholder="Buscar..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="pl-10"
+              />
+            </div>
+          </CardHeader>
+          <ScrollArea className="flex-1">
+            <div className="p-2 space-y-1">
+              {loading ? (
+                <div className="flex items-center justify-center py-8">
+                  <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+                </div>
+              ) : filteredConversations.length === 0 ? (
+                <p className="text-sm text-muted-foreground text-center py-4">
+                  No hay conversaciones
+                </p>
+              ) : (
+                filteredConversations.map(conv => (
+                  <div
+                    key={conv.other_user_id}
+                    className={`p-3 rounded-lg cursor-pointer hover:bg-[hsl(var(--surface-2))] transition-colors ${
+                      selectedConversation?.other_user_id === conv.other_user_id ? 'bg-[hsl(var(--surface-2))]' : ''
+                    }`}
+                    onClick={() => handleSelectConversation(conv)}
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-full bg-primary/20 flex items-center justify-center text-primary font-semibold">
+                        {conv.other_user_name?.charAt(0).toUpperCase()}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between">
+                          <p className="font-medium text-sm truncate">
+                            {conv.other_user_name}
+                          </p>
+                          <span className="text-xs text-muted-foreground">
+                            {conv.other_user_role}
+                          </span>
+                        </div>
+                        <p className="text-xs text-muted-foreground truncate">
+                          {conv.other_user_email}
+                        </p>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          Último: {conv.last_message_at ? new Date(conv.last_message_at).toLocaleDateString('es-ES') : 'N/A'}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </ScrollArea>
+        </Card>
+
+        {/* Área de mensajes */}
+        <Card className="border-border/50 lg:col-span-2 flex flex-col">
+          {selectedConversation ? (
+            <>
+              <CardHeader className="pb-2 border-b">
+                <CardTitle className="text-base">
+                  Conversación con {selectedConversation.other_user_name}
+                  <span className="text-xs font-normal text-muted-foreground ml-2">
+                    ({selectedConversation.other_user_email})
+                  </span>
+                </CardTitle>
+              </CardHeader>
+              <ScrollArea className="flex-1 p-4">
+                {messagesLoading ? (
+                  <div className="flex items-center justify-center h-full">
+                    <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+                  </div>
+                ) : messages.length === 0 ? (
+                  <p className="text-sm text-muted-foreground text-center py-8">
+                    No hay mensajes en esta conversación
+                  </p>
+                ) : (
+                  <div className="space-y-3">
+                    {messages.map(msg => {
+                      const isFromSelectedUser = msg.sender_id === selectedConversation.other_user_id;
+                      return (
+                        <div
+                          key={msg.id}
+                          className={`flex ${isFromSelectedUser ? 'justify-start' : 'justify-end'}`}
+                        >
+                          <div
+                            className={`max-w-[70%] rounded-lg p-3 ${
+                              isFromSelectedUser
+                                ? 'bg-[hsl(var(--surface-2))]'
+                                : 'bg-primary/20'
+                            }`}
+                          >
+                            <p className="text-xs font-medium mb-1">
+                              {isFromSelectedUser ? selectedConversation.other_user_name : 'Sistema/Admin'}
+                            </p>
+                            {msg.type === 'text' && <p className="text-sm">{msg.content}</p>}
+                            {msg.type === 'image' && (
+                              <img src={msg.content} alt="Imagen" className="max-w-full rounded" />
+                            )}
+                            {msg.type === 'video' && (
+                              <video src={msg.content} controls className="max-w-full rounded" />
+                            )}
+                            <div className="flex items-center justify-between mt-1">
+                              <p className="text-xs opacity-70">
+                                {new Date(msg.created_at).toLocaleString('es-ES')}
+                              </p>
+                              {msg.is_paid && (
+                                <span className="text-xs bg-green-500/20 text-green-400 px-2 py-0.5 rounded">
+                                  Pagado
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </ScrollArea>
+            </>
+          ) : (
+            <div className="flex items-center justify-center h-full">
+              <p className="text-muted-foreground">
+                Selecciona una conversación para ver los mensajes
+              </p>
+            </div>
+          )}
+        </Card>
+      </div>
     </div>
   );
 }
 
-// ==================== OTROS COMPONENTES (sin cambios) ====================
+// ==================== OTROS COMPONENTES (SIN CAMBIOS) ====================
 
 function AdminUsers() {
   const [users, setUsers] = useState([]);
