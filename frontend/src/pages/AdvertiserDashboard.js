@@ -4,7 +4,7 @@ import { useAuth } from '@/App';
 import { Link, useNavigate } from 'react-router-dom';
 import {
   depositsAPI, campaignsAPI, applicationsAPI, deliverablesAPI, transactionsAPI,
-  paymentInfoAPI
+  paymentInfoAPI, storageAPI
 } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -17,50 +17,12 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Progress } from '@/components/ui/progress';
 import { toast } from 'sonner';
 import { API_BASE } from '@/lib/api';
+import MediaUploader from '@/components/MediaUploader';
 import {
   DollarSign, Plus, Upload, Megaphone, FileCheck, LogOut, Zap, Wallet, CreditCard,
   CheckCircle2, XCircle, Clock, Eye, TrendingUp, ExternalLink, Music, Mic, Image as ImageIcon,
   HardDrive
 } from 'lucide-react';
-
-// Importación dinámica de MediaUploader para evitar errores si no existe
-let MediaUploader = null;
-try {
-  MediaUploader = require('@/components/MediaUploader').default;
-} catch (e) {
-  // Fallback: componente simple de subida
-  MediaUploader = ({ onUploadSuccess, accept, maxSizeMB, folder, resourceType }) => {
-    const [uploading, setUploading] = useState(false);
-    const handleFileChange = async (e) => {
-      const file = e.target.files[0];
-      if (!file) return;
-      setUploading(true);
-      try {
-        // Simular subida (en producción debería usar el servicio cloudinary)
-        const fakeResult = {
-          public_id: 'temp_' + Date.now(),
-          url: URL.createObjectURL(file),
-          format: file.type.split('/')[1],
-          bytes: file.size,
-          resource_type: resourceType
-        };
-        onUploadSuccess(fakeResult);
-        toast.success('Archivo cargado (modo simulación)');
-      } catch (error) {
-        toast.error('Error al cargar archivo');
-      } finally {
-        setUploading(false);
-      }
-    };
-    return (
-      <div className="border-2 border-dashed border-border rounded-lg p-4 text-center">
-        <Input type="file" accept={accept} onChange={handleFileChange} disabled={uploading} />
-        {uploading && <Progress value={50} className="mt-2" />}
-        <p className="text-xs text-muted-foreground mt-1">Máx {maxSizeMB}MB</p>
-      </div>
-    );
-  };
-}
 
 function StatusBadge({ status }) {
   const map = {
@@ -164,7 +126,6 @@ export default function AdvertiserDashboard() {
       setPaymentInfo(pi.data);
 
       try {
-        const { storageAPI } = await import('@/lib/api');
         const storageRes = await storageAPI.getUsage(user.sub);
         setStorageUsage(storageRes.data);
       } catch {}
@@ -484,17 +445,33 @@ export default function AdvertiserDashboard() {
             <div className="border-t pt-4 mt-2">
               <Label className="text-base font-semibold">Multimedia e Instrucciones</Label>
 
-              {/* Subir audio (alternativa a Vocaroo) */}
+              {/* Subir audio (alternativa a Vocaroo) - Usando MediaUploader real */}
               <div className="mt-3">
                 <Label className="text-sm font-medium flex items-center gap-2"><Mic className="w-4 h-4 text-primary" /> Audio de Instrucciones (subir archivo)</Label>
                 <p className="text-xs text-muted-foreground mb-2">Sube un archivo de audio con instrucciones para los creadores.</p>
                 {!uploadedAudio ? (
-                  <MediaUploader onUploadSuccess={setUploadedAudio} accept="audio/*" maxSizeMB={20} folder={`advertisers/${user?.sub}/campaigns/audio`} resourceType="video" />
+                  <MediaUploader
+                    onUploadSuccess={(result) => setUploadedAudio(result)}
+                    onUploadError={(error) => toast.error('Error al subir audio')}
+                    accept="audio/*"
+                    maxSizeMB={20}
+                    folder={`advertisers/${user?.sub}/campaigns/audio`}
+                    resourceType="video"
+                    buttonText="Seleccionar audio"
+                  />
                 ) : (
                   <div className="flex items-center gap-3 p-3 rounded-lg bg-[hsl(var(--surface-2))]">
                     <Music className="w-5 h-5 text-primary" />
-                    <div className="flex-1"><p className="text-sm font-medium">Audio subido</p><p className="text-xs text-muted-foreground">{uploadedAudio.duration ? `${uploadedAudio.duration}s` : ''}</p><audio src={uploadedAudio.url} controls className="mt-1 w-full max-w-xs h-8" /></div>
-                    <Button variant="ghost" size="icon" onClick={() => setUploadedAudio(null)}><XCircle className="w-4 h-4" /></Button>
+                    <div className="flex-1">
+                      <p className="text-sm font-medium">Audio subido</p>
+                      <p className="text-xs text-muted-foreground">
+                        {uploadedAudio.duration ? `${Math.round(uploadedAudio.duration)}s` : ''}
+                      </p>
+                      <audio src={uploadedAudio.url} controls className="mt-1 w-full max-w-xs h-8" />
+                    </div>
+                    <Button variant="ghost" size="icon" onClick={() => setUploadedAudio(null)}>
+                      <XCircle className="w-4 h-4" />
+                    </Button>
                   </div>
                 )}
               </div>
@@ -503,23 +480,45 @@ export default function AdvertiserDashboard() {
               <div className="mt-3">
                 <Label className="text-sm font-medium">O pegar enlace de Vocaroo</Label>
                 <div className="flex items-center gap-2">
-                  <Input type="url" value={campForm.vocaroo_link} onChange={e => setCampForm({...campForm, vocaroo_link: e.target.value})} placeholder="https://vocaroo.com/..." disabled={!!uploadedAudio} className="flex-1" />
-                  <Button type="button" variant="outline" size="sm" onClick={() => window.open('https://vocaroo.com/', '_blank')}><ExternalLink className="w-3 h-3 mr-1" /> Ir a Vocaroo</Button>
+                  <Input
+                    type="url"
+                    value={campForm.vocaroo_link}
+                    onChange={e => setCampForm({...campForm, vocaroo_link: e.target.value})}
+                    placeholder="https://vocaroo.com/..."
+                    disabled={!!uploadedAudio}
+                    className="flex-1"
+                  />
+                  <Button type="button" variant="outline" size="sm" onClick={() => window.open('https://vocaroo.com/', '_blank')}>
+                    <ExternalLink className="w-3 h-3 mr-1" /> Ir a Vocaroo
+                  </Button>
                 </div>
                 <p className="text-xs text-muted-foreground mt-1">Si subes un archivo de audio, el enlace Vocaroo se ignorará.</p>
               </div>
 
-              {/* Subir imagen de referencia */}
+              {/* Subir imagen de referencia - Usando MediaUploader real */}
               <div className="mt-3">
                 <Label className="text-sm font-medium flex items-center gap-2"><ImageIcon className="w-4 h-4 text-primary" /> Imagen de Referencia (opcional)</Label>
                 <p className="text-xs text-muted-foreground mb-2">Sube una imagen de ejemplo o guía visual.</p>
                 {!uploadedImage ? (
-                  <MediaUploader onUploadSuccess={setUploadedImage} accept="image/*" maxSizeMB={5} folder={`advertisers/${user?.sub}/campaigns/images`} resourceType="image" />
+                  <MediaUploader
+                    onUploadSuccess={(result) => setUploadedImage(result)}
+                    onUploadError={(error) => toast.error('Error al subir imagen')}
+                    accept="image/*"
+                    maxSizeMB={5}
+                    folder={`advertisers/${user?.sub}/campaigns/images`}
+                    resourceType="image"
+                    buttonText="Seleccionar imagen"
+                  />
                 ) : (
                   <div className="flex items-center gap-3 p-3 rounded-lg bg-[hsl(var(--surface-2))]">
                     <img src={uploadedImage.url} alt="Preview" className="w-16 h-16 object-cover rounded" />
-                    <div className="flex-1"><p className="text-sm font-medium">Imagen subida</p><a href={uploadedImage.url} target="_blank" rel="noopener noreferrer" className="text-xs text-primary hover:underline">Ver imagen</a></div>
-                    <Button variant="ghost" size="icon" onClick={() => setUploadedImage(null)}><XCircle className="w-4 h-4" /></Button>
+                    <div className="flex-1">
+                      <p className="text-sm font-medium">Imagen subida</p>
+                      <a href={uploadedImage.url} target="_blank" rel="noopener noreferrer" className="text-xs text-primary hover:underline">Ver imagen</a>
+                    </div>
+                    <Button variant="ghost" size="icon" onClick={() => setUploadedImage(null)}>
+                      <XCircle className="w-4 h-4" />
+                    </Button>
                   </div>
                 )}
               </div>
