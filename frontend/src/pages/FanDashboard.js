@@ -20,7 +20,7 @@ import { toast } from 'sonner';
 import {
   Search, Users, Eye, Crown, Heart, Wallet, Plus, LogOut, Zap, MapPin,
   DollarSign, Music, Upload, MessageCircle, Send, Lock, Unlock, Image as ImageIcon,
-  Video, Mic, Play, Pause, Loader2
+  Video, Mic, Play, Pause, Loader2, Maximize2, X
 } from 'lucide-react';
 
 function StatusBadge({ status }) {
@@ -34,11 +34,11 @@ function StatusBadge({ status }) {
   return <span className={map[status] || 'status-badge-pending'}>{labels[status] || status}</span>;
 }
 
-// Componente para mostrar contenido multimedia (imagen/video/audio) con posibilidad de blur
-function MediaContent({ item, isSubscribed, isPaid }) {
+// Componente para mostrar contenido multimedia con clic para ampliar
+function MediaContent({ item, isSubscribed, isPaid, onExpand }) {
   const [signedUrl, setSignedUrl] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [blurred, setBlurred] = useState(!isSubscribed && !isPaid && item.is_premium);
+  const blurred = !isSubscribed && !isPaid && item.is_premium;
 
   useEffect(() => {
     const fetchUrl = async () => {
@@ -64,29 +64,45 @@ function MediaContent({ item, isSubscribed, isPaid }) {
   }, [item]);
 
   if (loading) {
-    return <div className="w-full h-32 bg-muted animate-pulse rounded" />;
+    return <div className="w-full h-48 bg-muted animate-pulse rounded" />;
   }
 
   const needsBlur = blurred && item.is_premium;
+  const mediaType = item.type || item.content_type;
+
+  const handleClick = () => {
+    if (!needsBlur && onExpand) {
+      onExpand({ ...item, signedUrl, type: mediaType });
+    }
+  };
 
   return (
-    <div className="relative">
-      {item.type === 'image' || item.content_type === 'photo' ? (
+    <div className="relative group cursor-pointer" onClick={handleClick}>
+      {mediaType === 'image' || mediaType === 'photo' ? (
         <img
           src={signedUrl}
           alt={item.title || 'Contenido'}
-          className={`w-full h-48 object-cover rounded ${needsBlur ? 'blur-xl' : ''}`}
+          className={`w-full h-48 object-cover rounded transition-all ${needsBlur ? 'blur-xl' : 'group-hover:brightness-90'}`}
         />
-      ) : item.type === 'video' || item.content_type === 'video' ? (
+      ) : mediaType === 'video' ? (
         <video
           src={signedUrl}
-          controls={!needsBlur}
           className={`w-full h-48 object-cover rounded ${needsBlur ? 'blur-xl' : ''}`}
+          muted
+          onMouseEnter={(e) => !needsBlur && e.target.play()}
+          onMouseLeave={(e) => !needsBlur && e.target.pause()}
         />
-      ) : item.type === 'audio' ? (
+      ) : mediaType === 'audio' ? (
         <audio src={signedUrl} controls className="w-full" />
       ) : (
         <div className="p-4 bg-muted rounded">{item.content || item.description}</div>
+      )}
+      {!needsBlur && (mediaType === 'image' || mediaType === 'photo') && (
+        <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
+          <Button size="icon" variant="secondary" className="h-8 w-8 rounded-full bg-black/50 hover:bg-black/70">
+            <Maximize2 className="w-4 h-4 text-white" />
+          </Button>
+        </div>
       )}
       {needsBlur && (
         <div className="absolute inset-0 flex items-center justify-center bg-black/30 rounded">
@@ -98,6 +114,46 @@ function MediaContent({ item, isSubscribed, isPaid }) {
         </div>
       )}
     </div>
+  );
+}
+
+// Modal para vista ampliada de contenido
+function MediaViewerModal({ isOpen, onClose, media }) {
+  if (!media) return null;
+
+  return (
+    <Dialog open={isOpen} onOpenChange={onClose}>
+      <DialogContent className="max-w-4xl max-h-[90vh] p-0 bg-black/95">
+        <button
+          onClick={onClose}
+          className="absolute top-4 right-4 z-50 p-2 rounded-full bg-black/50 hover:bg-black/70 text-white"
+        >
+          <X className="w-5 h-5" />
+        </button>
+        <div className="flex items-center justify-center h-full min-h-[50vh]">
+          {media.type === 'video' ? (
+            <video
+              src={media.signedUrl}
+              controls
+              autoPlay
+              className="max-w-full max-h-[85vh] object-contain"
+            />
+          ) : (
+            <img
+              src={media.signedUrl}
+              alt={media.title || 'Contenido'}
+              className="max-w-full max-h-[85vh] object-contain"
+            />
+          )}
+        </div>
+        {media.title && (
+          <div className="absolute bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-black/80 to-transparent text-white">
+            <p className="font-medium">{media.title}</p>
+            {media.description && <p className="text-sm opacity-80">{media.description}</p>}
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -141,6 +197,10 @@ export default function FanDashboard() {
   const [viewingContentCreator, setViewingContentCreator] = useState(null);
   const [showContentModal, setShowContentModal] = useState(false);
 
+  // Media Viewer
+  const [viewerMedia, setViewerMedia] = useState(null);
+  const [showMediaViewer, setShowMediaViewer] = useState(false);
+
   const load = useCallback(async () => {
     setLoading(true);
     try {
@@ -158,14 +218,18 @@ export default function FanDashboard() {
       try {
         const mt = await microTasksAPI.list();
         setMicroTasks(mt.data);
-      } catch { }
+      } catch {}
 
-      // Cargar conversaciones de chat reales
+      // Cargar conversaciones de chat - manejar 404 silenciosamente
       try {
         const conv = await chatAPI.getConversations();
         setConversations(conv.data);
       } catch (err) {
-        console.error('Error loading conversations:', err);
+        // Si es 404, simplemente no hay conversaciones aún
+        if (err.response?.status !== 404) {
+          console.error('Error loading conversations:', err);
+        }
+        setConversations([]);
       }
 
       await refreshUser();
@@ -256,19 +320,26 @@ export default function FanDashboard() {
     }
   };
 
-  // Chat functions - reales
+  const handleExpandMedia = (media) => {
+    setViewerMedia(media);
+    setShowMediaViewer(true);
+  };
+
+  // Chat functions
   const loadConversation = async (otherUserId) => {
     setChatLoading(true);
     try {
       const res = await chatAPI.getMessages(otherUserId);
       setMessages(res.data);
       setSelectedConversation(otherUserId);
-      // Marcar mensajes como leídos (el backend puede hacerlo automático, pero forzamos)
       try {
         await chatAPI.markAsRead(otherUserId);
       } catch {}
     } catch (error) {
-      toast.error('Error al cargar mensajes');
+      if (error.response?.status !== 404) {
+        toast.error('Error al cargar mensajes');
+      }
+      setMessages([]);
     } finally {
       setChatLoading(false);
     }
@@ -287,7 +358,6 @@ export default function FanDashboard() {
       const res = await chatAPI.sendMessage(payload);
       setMessages(prev => [...prev, res.data]);
       setNewMessage('');
-      // Actualizar conversaciones para reflejar último mensaje
       const conv = await chatAPI.getConversations();
       setConversations(conv.data);
     } catch (error) {
@@ -300,7 +370,6 @@ export default function FanDashboard() {
   const startChatWithCreator = (creator) => {
     setSelectedConversation(creator.id);
     loadConversation(creator.id);
-    // Cambiar a pestaña chat
     setTab('chat');
   };
 
@@ -530,7 +599,6 @@ export default function FanDashboard() {
           {/* ==================== CHAT ==================== */}
           <TabsContent value="chat">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 h-[600px]">
-              {/* Lista de conversaciones */}
               <Card className="border-border/50 md:col-span-1 flex flex-col">
                 <CardHeader className="pb-2">
                   <CardTitle className="text-base">Conversaciones</CardTitle>
@@ -578,7 +646,6 @@ export default function FanDashboard() {
                 </ScrollArea>
               </Card>
 
-              {/* Área de mensajes */}
               <Card className="border-border/50 md:col-span-2 flex flex-col">
                 {selectedConversation ? (
                   <>
@@ -618,6 +685,7 @@ export default function FanDashboard() {
                                       item={{ ...msg, type: 'image', media_url: msg.content }}
                                       isSubscribed={true}
                                       isPaid={!msg.is_blurred}
+                                      onExpand={handleExpandMedia}
                                     />
                                   )}
                                   {msg.type === 'video' && (
@@ -625,6 +693,7 @@ export default function FanDashboard() {
                                       item={{ ...msg, type: 'video', media_url: msg.content }}
                                       isSubscribed={true}
                                       isPaid={!msg.is_blurred}
+                                      onExpand={handleExpandMedia}
                                     />
                                   )}
                                   {msg.type === 'audio' && (
@@ -780,7 +849,6 @@ export default function FanDashboard() {
 
       {/* ==================== DIALOGS ==================== */}
 
-      {/* Micro Task Dialog */}
       <Dialog open={showMicroTask} onOpenChange={setShowMicroTask}>
         <DialogContent>
           <DialogHeader>
@@ -819,7 +887,6 @@ export default function FanDashboard() {
         </DialogContent>
       </Dialog>
 
-      {/* Deposit Dialog */}
       <Dialog open={showDeposit} onOpenChange={setShowDeposit}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
@@ -898,7 +965,6 @@ export default function FanDashboard() {
         </DialogContent>
       </Dialog>
 
-      {/* Premium Content Modal */}
       <Dialog open={showContentModal} onOpenChange={setShowContentModal}>
         <DialogContent className="max-w-3xl max-h-[80vh] overflow-y-auto">
           <DialogHeader>
@@ -918,6 +984,7 @@ export default function FanDashboard() {
                       item={item}
                       isSubscribed={isSub}
                       isPaid={false}
+                      onExpand={handleExpandMedia}
                     />
                     <CardContent className="p-3">
                       <p className="font-medium text-sm">{item.title || 'Sin título'}</p>
@@ -932,6 +999,12 @@ export default function FanDashboard() {
           </div>
         </DialogContent>
       </Dialog>
+
+      <MediaViewerModal
+        isOpen={showMediaViewer}
+        onClose={() => setShowMediaViewer(false)}
+        media={viewerMedia}
+      />
     </div>
   );
 }
