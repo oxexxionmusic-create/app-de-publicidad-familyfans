@@ -15,10 +15,11 @@ export default function MediaUploader({
   maxSizeMB = 500,
   maxDuration = 420,
   folder = 'user_uploads',
-  resourceType = 'auto', // 'auto', 'image', 'video'
+  resourceType = 'auto',
   className = '',
   showPreview = true,
   buttonText = 'Seleccionar archivo',
+  disabled = false,
 }) {
   const [file, setFile] = useState(null);
   const [preview, setPreview] = useState(null);
@@ -38,7 +39,6 @@ export default function MediaUploader({
 
     const type = determineResourceType(selectedFile);
     
-    // Validar según tipo
     let validation;
     if (type === 'video') {
       validation = await validateVideo(selectedFile, maxDuration, maxSizeMB);
@@ -55,7 +55,6 @@ export default function MediaUploader({
     setValidationError('');
     setFile(selectedFile);
 
-    // Crear preview
     if (showPreview) {
       if (selectedFile.type.startsWith('image/')) {
         const reader = new FileReader();
@@ -87,13 +86,11 @@ export default function MediaUploader({
       setProgress(100);
       toast.success('Archivo subido exitosamente');
       
-      // Pasar resultado al padre
       onUploadSuccess?.({
         ...result,
         originalFile: file,
       });
 
-      // Limpiar estado
       setFile(null);
       setPreview(null);
       setProgress(0);
@@ -121,8 +118,10 @@ export default function MediaUploader({
     <div className={`space-y-3 ${className}`}>
       {!file ? (
         <div
-          className="border-2 border-dashed border-border rounded-lg p-6 text-center cursor-pointer hover:border-primary/50 transition-colors"
-          onClick={() => fileInputRef.current?.click()}
+          className={`border-2 border-dashed border-border rounded-lg p-6 text-center transition-colors ${
+            disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer hover:border-primary/50'
+          }`}
+          onClick={() => !disabled && fileInputRef.current?.click()}
         >
           <Upload className="w-8 h-8 mx-auto text-muted-foreground mb-2" />
           <p className="text-sm text-muted-foreground">{buttonText}</p>
@@ -136,13 +135,12 @@ export default function MediaUploader({
             accept={accept}
             onChange={handleFileSelect}
             className="hidden"
-            disabled={uploading}
+            disabled={disabled || uploading}
           />
         </div>
       ) : (
         <div className="border rounded-lg p-4">
           <div className="flex items-start gap-3">
-            {/* Preview */}
             {showPreview && preview && file.type.startsWith('image/') && (
               <img src={preview} alt="Preview" className="w-16 h-16 object-cover rounded" />
             )}
@@ -176,7 +174,7 @@ export default function MediaUploader({
             </div>
 
             {!uploading && (
-              <Button variant="ghost" size="icon" onClick={clearFile}>
+              <Button variant="ghost" size="icon" onClick={clearFile} disabled={disabled}>
                 <X className="w-4 h-4" />
               </Button>
             )}
@@ -184,8 +182,18 @@ export default function MediaUploader({
 
           {!uploading && (
             <div className="flex justify-end mt-3">
-              <Button size="sm" onClick={handleUpload}>
-                <Upload className="w-4 h-4 mr-1" /> Subir a Cloudinary
+              <Button size="sm" onClick={handleUpload} disabled={disabled}>
+                {uploading ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-1 animate-spin" />
+                    Subiendo...
+                  </>
+                ) : (
+                  <>
+                    <Upload className="w-4 h-4 mr-1" />
+                    Subir a Cloudinary
+                  </>
+                )}
               </Button>
             </div>
           )}
