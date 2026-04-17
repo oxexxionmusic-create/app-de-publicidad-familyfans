@@ -24,10 +24,7 @@ from auth import (
 )
 
 # --- Modelos de Chat ---
-from chat import (
-    ChatMessageCreate, ChatMessageResponse, ChatConversation,
-    MessageType, PaymentRequest
-)
+from chat import ChatMessageCreate, ChatMessageResponse, ChatConversation, PaymentRequest
 
 # ==================== CONFIGURACIÓN INICIAL ====================
 ROOT_DIR = Path(__file__).parent
@@ -114,11 +111,6 @@ async def startup():
             "updated_at": now_iso(),
         })
         logger.info("Platform settings seeded")
-    
-    # Crear índices para chat
-    await db.chat_messages.create_index([("sender_id", 1), ("created_at", -1)])
-    await db.chat_messages.create_index([("recipient_id", 1), ("created_at", -1)])
-    await db.chat_messages.create_index([("sender_id", 1), ("recipient_id", 1)])
     
     await db.users.create_index("email", unique=True)
     await db.users.create_index("referral_code")
@@ -1952,7 +1944,7 @@ async def cloudinary_webhook(request: Request):
         logger.error(f"Error en webhook Cloudinary: {str(e)}")
         return {"status": "error", "message": str(e)}
 
-# ==================== CLOUDINARY USAGE ====================
+# ==================== CLOUDINARY USAGE (admin) ====================
 @api.get("/cloudinary/usage")
 async def get_cloudinary_usage(current_user=Depends(require_admin)):
     """Obtiene estadísticas de uso de Cloudinary"""
@@ -2095,6 +2087,7 @@ async def delete_media(
         raise HTTPException(500, f"Error al eliminar recurso: {str(e)}")
 
 # ==================== CHAT ENDPOINTS ====================
+
 @api.post("/chat/messages", response_model=ChatMessageResponse)
 async def send_chat_message(
     message: ChatMessageCreate,
@@ -2122,12 +2115,12 @@ async def send_chat_message(
         "content": message.content,
         "is_paid": message.is_paid,
         "price": message.price,
-        "is_blurred": message.is_paid,  # Inicialmente blurred si es de pago
+        "is_blurred": message.is_paid,
         "duration": message.duration,
         "cloudinary_public_id": message.cloudinary_public_id,
         "created_at": datetime.now(timezone.utc),
         "read_at": None,
-        "paid_by": []  # Lista de usuarios que han pagado por este contenido
+        "paid_by": []
     }
     
     result = await db.chat_messages.insert_one(chat_message)
@@ -2158,7 +2151,6 @@ async def get_conversations(current_user: dict = Depends(get_current_user)):
     """Obtiene todas las conversaciones del usuario actual"""
     user_id = current_user["sub"]
     
-    # Pipeline de agregación para obtener la última conversación con cada usuario
     pipeline = [
         {
             "$match": {
@@ -2208,16 +2200,13 @@ async def get_conversations(current_user: dict = Depends(get_current_user)):
             }
         },
         {
-            "$unwind": {
-                "path": "$user_info",
-                "preserveNullAndEmptyArrays": True
-            }
+            "$unwind": "$user_info"
         },
         {
             "$project": {
                 "other_user_id": {"$toString": "$_id"},
-                "other_user_name": {"$ifNull": ["$user_info.name", "Usuario"]},
-                "other_user_photo": {"$ifNull": ["$user_info.profile_photo_url", ""]},
+                "other_user_name": "$user_info.name",
+                "other_user_photo": "$user_info.profile_photo_url",
                 "last_message": 1,
                 "last_message_at": 1,
                 "unread_count": 1
@@ -2253,7 +2242,7 @@ async def get_chat_messages(
     
     messages_cursor = db.chat_messages.find(query).sort("created_at", -1).limit(limit)
     messages = await messages_cursor.to_list(length=limit)
-    messages.reverse()  # Orden cronológico
+    messages.reverse()
     
     # Marcar mensajes recibidos como leídos
     await db.chat_messages.update_many(
@@ -2331,7 +2320,7 @@ async def pay_for_chat_content(
         {"$inc": {"balance": -price}}
     )
     
-    # Calcular comisión (35% si es Top10, 25% normal)
+    # Calcular comisión
     creator = await db.users.find_one({"_id": ObjectId(sender_id)})
     commission_rate = 0.35 if creator.get("is_top10") else 0.25
     commission = round(price * commission_rate, 2)
@@ -2358,7 +2347,7 @@ async def pay_for_chat_content(
         "type": "chat_income",
         "amount": creator_payout,
         "reference_id": str(message["_id"]),
-        "description": f"Ingreso por contenido en chat",
+        "description": "Ingreso por contenido en chat",
         "created_at": now_iso()
     })
     
@@ -2371,7 +2360,7 @@ async def pay_for_chat_content(
         "created_at": now_iso()
     })
     
-    # Marcar como pagado por este usuario
+    # Marcar como pagado
     await db.chat_messages.update_one(
         {"_id": ObjectId(payment.message_id)},
         {"$addToSet": {"paid_by": user_id}}
