@@ -3,7 +3,7 @@ import { useState, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { toast } from 'sonner';
-import { Upload, X, Image as ImageIcon, Video, AlertCircle } from 'lucide-react';
+import { Upload, X, Image as ImageIcon, Video, AlertCircle, Loader2 } from 'lucide-react';
 import { uploadToCloudinary, validateVideo, validateImage } from '@/services/cloudinary';
 
 export default function MediaUploader({
@@ -14,8 +14,6 @@ export default function MediaUploader({
   maxDuration = 420,
   folder = 'user_uploads',
   resourceType = 'auto',
-  publicIdPrefix = '',
-  tags = [],
   className = '',
 }) {
   const [file, setFile] = useState(null);
@@ -25,11 +23,13 @@ export default function MediaUploader({
   const [validationError, setValidationError] = useState('');
   const fileInputRef = useRef(null);
 
+  // Validar que folder no sea undefined o contenga "undefined"
+  const safeFolder = folder && !folder.includes('undefined') ? folder : 'user_uploads';
+
   const handleFileSelect = async (e) => {
     const selectedFile = e.target.files[0];
     if (!selectedFile) return;
 
-    // Validar según tipo
     let validation;
     if (selectedFile.type.startsWith('video/')) {
       validation = await validateVideo(selectedFile, maxDuration, maxSizeMB);
@@ -47,7 +47,6 @@ export default function MediaUploader({
 
     setValidationError('');
     setFile(selectedFile);
-    // Crear preview
     if (selectedFile.type.startsWith('image/')) {
       const reader = new FileReader();
       reader.onload = (e) => setPreview(e.target.result);
@@ -61,19 +60,21 @@ export default function MediaUploader({
 
   const handleUpload = async () => {
     if (!file) return;
+    if (!safeFolder) {
+      toast.error('Error de configuración: carpeta no definida');
+      return;
+    }
+
     setUploading(true);
     setProgress(10);
     try {
       const result = await uploadToCloudinary(file, {
-        folder,
+        folder: safeFolder,
         resource_type: resourceType,
-        public_id_prefix: publicIdPrefix,
-        tags,
       });
       setProgress(100);
       toast.success('Archivo subido exitosamente');
       onUploadSuccess?.(result);
-      // Limpiar
       setFile(null);
       setPreview(null);
       setProgress(0);
@@ -148,7 +149,7 @@ export default function MediaUploader({
           </div>
           {!uploading && (
             <div className="flex justify-end mt-3">
-              <Button size="sm" onClick={handleUpload}>
+              <Button size="sm" onClick={handleUpload} disabled={!safeFolder}>
                 Subir a Cloudinary
               </Button>
             </div>
