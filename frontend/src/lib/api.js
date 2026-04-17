@@ -129,6 +129,8 @@ export const premiumContentAPI = {
   // Obtener URL firmada para contenido (con blur si no está pagado)
   getSignedUrl: (publicId, resourceType = 'image') =>
     api.get(`/media/signed-url/${publicId}`, { params: { resource_type: resourceType } }),
+  // Eliminar contenido premium (solo el creador o admin)
+  delete: (id) => api.delete(`/premium-content/${id}`),
 };
 
 // ==================== MEDIA (CLOUDINARY) ====================
