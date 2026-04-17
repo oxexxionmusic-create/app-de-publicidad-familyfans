@@ -20,7 +20,7 @@ import { toast } from 'sonner';
 import {
   Search, Users, Eye, Crown, Heart, Wallet, Plus, LogOut, Zap, MapPin,
   DollarSign, Music, Upload, MessageCircle, Send, Lock, Unlock, Image as ImageIcon,
-  Video, Mic, Play, Pause
+  Video, Mic, Play, Pause, Loader2
 } from 'lucide-react';
 
 function StatusBadge({ status }) {
@@ -43,7 +43,7 @@ function MediaContent({ item, isSubscribed, isPaid }) {
   useEffect(() => {
     const fetchUrl = async () => {
       if (!item.cloudinary_public_id) {
-        setSignedUrl(item.media_url || item.url);
+        setSignedUrl(item.media_url || item.url || item.content);
         setLoading(false);
         return;
       }
@@ -55,7 +55,7 @@ function MediaContent({ item, isSubscribed, isPaid }) {
         setSignedUrl(res.data.url);
       } catch (error) {
         console.error('Error getting signed URL:', error);
-        setSignedUrl(item.media_url || item.url);
+        setSignedUrl(item.media_url || item.url || item.content);
       } finally {
         setLoading(false);
       }
@@ -135,7 +135,6 @@ export default function FanDashboard() {
   const [chatLoading, setChatLoading] = useState(false);
   const [sendingMessage, setSendingMessage] = useState(false);
   const messagesEndRef = useRef(null);
-  const [activeChatTab, setActiveChatTab] = useState('conversations'); // 'conversations' or 'creators'
 
   // Premium Content viewing
   const [selectedCreatorContent, setSelectedCreatorContent] = useState([]);
@@ -161,11 +160,13 @@ export default function FanDashboard() {
         setMicroTasks(mt.data);
       } catch { }
 
-      // Cargar conversaciones de chat
+      // Cargar conversaciones de chat reales
       try {
         const conv = await chatAPI.getConversations();
         setConversations(conv.data);
-      } catch { }
+      } catch (err) {
+        console.error('Error loading conversations:', err);
+      }
 
       await refreshUser();
     } catch (error) {
@@ -179,7 +180,6 @@ export default function FanDashboard() {
   }, [load]);
 
   useEffect(() => {
-    // Scroll al final de los mensajes
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
@@ -256,14 +256,17 @@ export default function FanDashboard() {
     }
   };
 
-  // Chat functions
+  // Chat functions - reales
   const loadConversation = async (otherUserId) => {
     setChatLoading(true);
     try {
       const res = await chatAPI.getMessages(otherUserId);
       setMessages(res.data);
       setSelectedConversation(otherUserId);
-      setActiveChatTab('conversations');
+      // Marcar mensajes como leídos (el backend puede hacerlo automático, pero forzamos)
+      try {
+        await chatAPI.markAsRead(otherUserId);
+      } catch {}
     } catch (error) {
       toast.error('Error al cargar mensajes');
     } finally {
@@ -284,7 +287,7 @@ export default function FanDashboard() {
       const res = await chatAPI.sendMessage(payload);
       setMessages(prev => [...prev, res.data]);
       setNewMessage('');
-      // Actualizar conversaciones
+      // Actualizar conversaciones para reflejar último mensaje
       const conv = await chatAPI.getConversations();
       setConversations(conv.data);
     } catch (error) {
@@ -297,6 +300,20 @@ export default function FanDashboard() {
   const startChatWithCreator = (creator) => {
     setSelectedConversation(creator.id);
     loadConversation(creator.id);
+    // Cambiar a pestaña chat
+    setTab('chat');
+  };
+
+  const handlePayForContent = async (messageId) => {
+    try {
+      await chatAPI.payForContent(messageId);
+      toast.success('Contenido desbloqueado');
+      if (selectedConversation) {
+        loadConversation(selectedConversation);
+      }
+    } catch (error) {
+      toast.error('Error al pagar');
+    }
   };
 
   return (
@@ -513,7 +530,7 @@ export default function FanDashboard() {
           {/* ==================== CHAT ==================== */}
           <TabsContent value="chat">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 h-[600px]">
-              {/* Lista de conversaciones / creadores */}
+              {/* Lista de conversaciones */}
               <Card className="border-border/50 md:col-span-1 flex flex-col">
                 <CardHeader className="pb-2">
                   <CardTitle className="text-base">Conversaciones</CardTitle>
@@ -573,7 +590,7 @@ export default function FanDashboard() {
                     <ScrollArea className="flex-1 p-4">
                       {chatLoading ? (
                         <div className="flex items-center justify-center h-full">
-                          <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary" />
+                          <Loader2 className="w-6 h-6 animate-spin text-primary" />
                         </div>
                       ) : messages.length === 0 ? (
                         <p className="text-sm text-muted-foreground text-center py-8">
@@ -600,14 +617,14 @@ export default function FanDashboard() {
                                     <MediaContent
                                       item={{ ...msg, type: 'image', media_url: msg.content }}
                                       isSubscribed={true}
-                                      isPaid={msg.is_paid ? true : false}
+                                      isPaid={!msg.is_blurred}
                                     />
                                   )}
                                   {msg.type === 'video' && (
                                     <MediaContent
                                       item={{ ...msg, type: 'video', media_url: msg.content }}
                                       isSubscribed={true}
-                                      isPaid={msg.is_paid ? true : false}
+                                      isPaid={!msg.is_blurred}
                                     />
                                   )}
                                   {msg.type === 'audio' && (
@@ -618,15 +635,7 @@ export default function FanDashboard() {
                                       <Button
                                         size="sm"
                                         variant="secondary"
-                                        onClick={async () => {
-                                          try {
-                                            await chatAPI.payForContent(msg.id);
-                                            toast.success('Contenido desbloqueado');
-                                            loadConversation(selectedConversation);
-                                          } catch (error) {
-                                            toast.error('Error al pagar');
-                                          }
-                                        }}
+                                        onClick={() => handlePayForContent(msg.id)}
                                       >
                                         <Lock className="w-3 h-3 mr-1" /> Pagar ${msg.price}
                                       </Button>
@@ -655,7 +664,7 @@ export default function FanDashboard() {
                           disabled={sendingMessage}
                         />
                         <Button type="submit" size="icon" disabled={sendingMessage}>
-                          <Send className="w-4 h-4" />
+                          {sendingMessage ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
                         </Button>
                       </form>
                     </div>
@@ -908,7 +917,7 @@ export default function FanDashboard() {
                     <MediaContent
                       item={item}
                       isSubscribed={isSub}
-                      isPaid={false} // Fan no ha pagado por este contenido individual
+                      isPaid={false}
                     />
                     <CardContent className="p-3">
                       <p className="font-medium text-sm">{item.title || 'Sin título'}</p>
